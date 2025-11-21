@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Simple P2P Draw</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; display: flex; flex-direction: column; align-items: center; }
+        .box { border: 1px solid #ccc; padding: 20px; border-radius: 8px; background: #f9f9f9; max-width: 600px; width: 100%; }
+        textarea { width: 100%; height: 60px; font-size: 10px; margin-top: 5px; }
+        button { padding: 10px 20px; cursor: pointer; background: #444; color: #fff; border: none; margin: 5px 0; }
+        canvas { border: 2px solid #000; margin-top: 20px; cursor: crosshair; background: #fff; display: none; }
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+
+<div id="setup" class="box">
+    <h2>Choose Role</h2>
+    <button onclick="startHost()">I am HOST (Drawer)</button>
+    <button onclick="startJoin()">I am VIEWER (Watcher)</button>
+    <div id="status" style="margin-top:10px; font-weight:bold; color:red;"></div>
+
+    <!-- Host UI -->
+    <div id="hostUI" class="hidden">
+        <p>1. Copy this code and send to Viewer:</p>
+        <textarea id="hostOffer" readonly>Generating...</textarea>
+        <p>2. Paste the code the Viewer sent back:</p>
+        <textarea id="hostAnswerInput" placeholder="Paste Viewer's reply here..."></textarea>
+        <button onclick="hostConnect()">Finish Connection</button>
+    </div>
+
+    <!-- Viewer UI -->
+    <div id="joinUI" class="hidden">
+        <p>1. Paste Host's code here:</p>
+        <textarea id="joinOfferInput"></textarea>
+        <button onclick="joinGenerate()">Generate Reply</button>
+        <div id="joinStep2" class="hidden">
+            <p>2. Copy this reply and send back to Host:</p>
+            <textarea id="joinAnswer" readonly>Generating...</textarea>
+        </div>
+    </div>
+</div>
+
+<canvas id="cvs" width="800" height="600"></canvas>
+
+<script>
+const config = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
+const pc = new RTCPeerConnection(config);
+let dc = null; // DataChannel
+
+// DOM Elements
+const cvs = document.getElementById('cvs');
+const ctx = cvs.getContext('2d');
+const status = document.getElementById('status');
+
+// --- WEBRTC LOGIC ---
+
+// Wait for ICE candidates to complete before showing code
+pc.onicecandidate = e => {
+    if (e.candidate === null) {
+        if (pc.localDescription.type === 'offer') {
+            document.getElementById('hostOffer').value = JSON.stringify(pc.localDescription);
+        } else {
+            document.getElementById('joinAnswer').value = JSON.stringify(pc.localDescription);
+        }
+    }
+};
+
+pc.onconnectionstatechange = () => {
+    if (pc.connectionState === "connected") {
+        document.getElementById('setup').style.display = "none";
+        cvs.style.display = "block";
+    }
+};
+
+// --- HOST FUNCTIONS ---
+async function startHost() {
+    document.getElementById('hostUI').classList.remove('hidden');
+    dc = pc.createDataChannel("draw");
+    dc.onopen = () => console.log("Connected");
+    
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    enableDrawing();
+}
+
+async function hostConnect() {
+    const answer = document.getElementById('hostAnswerInput').value;
+    if(!answer) return alert("Paste Viewer's reply first!");
+    await pc.setRemoteDescription(JSON.parse(answer));
+}
+
+// --- JOINER FUNCTIONS ---
+function startJoin() {
+    document.getElementById('joinUI').classList.remove('hidden');
+}
+
+async function joinGenerate() {
+    const offerStr = document.getElementById('joinOfferInput').value;
+    if(!offerStr) return alert("Paste Host's code first!");
+    
+    await pc.setRemoteDescription(JSON.parse(offerStr));
+    
+    pc.ondatachannel = e => {
+        dc = e.channel;
+        dc.onmessage = handleDrawData;
+    };
+
+    const answer = await pc.createAnswer();
+    await pc.setLocalDescription(answer);
+    document.getElementById('joinStep2').classList.remove('hidden');
+}
+
+// --- DRAWING LOGIC ---
+let drawing = false;
+let last = {x:0, y:0};
+
+function enableDrawing() {
+    cvs.addEventListener('mousedown', e => {
+        drawing = true;
+        last = {x: e.offsetX, y: e.offsetY};
+        send({t: 's', x: last.x, y: last.y}); // s = start
+    });
+    cvs.addEventListener('mousemove', e => {
+        if(!drawing) return;
+        draw(last.x, last.y, e.offsetX, e.offsetY);
+        send({t: 'd', x: e.offsetX, y: e.offsetY}); // d = draw
+        last = {x: e.offsetX, y: e.offsetY};
+    });
+    window.addEventListener('mouseup', () => drawing = false);
+}
+
+function draw(x1, y1, x2, y2) {
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.stroke();
+}
+
+function send(data) {
+    if(dc && dc.readyState === 'open') dc.send(JSON.stringify(data));
+}
+
+// Viewer Logic
+let rLast = {x:0, y:0};
+function handleDrawData(e) {
+    const d = JSON.parse(e.data);
+    if(d.t === 's') {
+        rLast = {x: d.x, y: d.y};
+    } else if(d.t === 'd') {
+        draw(rLast.x, rLast.y, d.x, d.y);
+        rLast = {x: d.x, y: d.y};
+    }
+}
+</script>
+</body>
+</html>
