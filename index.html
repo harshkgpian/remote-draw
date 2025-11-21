@@ -1,158 +1,243 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Simple P2P Draw</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sheet Sync Canvas</title>
     <style>
-        body { font-family: sans-serif; padding: 20px; display: flex; flex-direction: column; align-items: center; }
-        .box { border: 1px solid #ccc; padding: 20px; border-radius: 8px; background: #f9f9f9; max-width: 600px; width: 100%; }
-        textarea { width: 100%; height: 60px; font-size: 10px; margin-top: 5px; }
-        button { padding: 10px 20px; cursor: pointer; background: #444; color: #fff; border: none; margin: 5px 0; }
-        canvas { border: 2px solid #000; margin-top: 20px; cursor: crosshair; background: #fff; display: none; }
-        .hidden { display: none; }
+        body { font-family: sans-serif; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; background: #f0f2f5; }
+        
+        .container { background: white; padding: 25px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); max-width: 400px; width: 100%; text-align: center; }
+        
+        input { width: 90%; padding: 10px; margin: 10px 0; border: 1px solid #ccc; border-radius: 5px; font-size: 16px; }
+        
+        button { width: 100%; padding: 12px; margin: 5px 0; background: #007bff; color: white; border: none; border-radius: 5px; font-size: 16px; cursor: pointer; }
+        button#btnViewer { background: #28a745; }
+        button:disabled { background: #ccc; }
+        
+        #status { margin-top: 15px; font-size: 14px; color: #666; font-weight: bold; min-height: 20px; }
+        
+        canvas { background: white; box-shadow: 0 4px 6px rgba(0,0,0,0.1); border: 2px solid #333; margin-top: 20px; cursor: crosshair; display: none; }
     </style>
 </head>
 <body>
 
-<div id="setup" class="box">
-    <h2>Choose Role</h2>
-    <button onclick="startHost()">I am HOST (Drawer)</button>
-    <button onclick="startJoin()">I am VIEWER (Watcher)</button>
-    <div id="status" style="margin-top:10px; font-weight:bold; color:red;"></div>
-
-    <!-- Host UI -->
-    <div id="hostUI" class="hidden">
-        <p>1. Copy this code and send to Viewer:</p>
-        <textarea id="hostOffer" readonly>Generating...</textarea>
-        <p>2. Paste the code the Viewer sent back:</p>
-        <textarea id="hostAnswerInput" placeholder="Paste Viewer's reply here..."></textarea>
-        <button onclick="hostConnect()">Finish Connection</button>
+    <div class="container" id="loginPanel">
+        <h2>Shared Canvas</h2>
+        <p>Enter a Room ID (e.g., "Room1") to connect.</p>
+        
+        <input type="text" id="roomId" placeholder="Enter Room Name/ID">
+        
+        <button id="btnHost" onclick="startHost()">Start as HOST (Draw)</button>
+        <button id="btnViewer" onclick="startViewer()">Join as VIEWER (Watch)</button>
+        
+        <div id="status">Ready.</div>
     </div>
 
-    <!-- Viewer UI -->
-    <div id="joinUI" class="hidden">
-        <p>1. Paste Host's code here:</p>
-        <textarea id="joinOfferInput"></textarea>
-        <button onclick="joinGenerate()">Generate Reply</button>
-        <div id="joinStep2" class="hidden">
-            <p>2. Copy this reply and send back to Host:</p>
-            <textarea id="joinAnswer" readonly>Generating...</textarea>
-        </div>
-    </div>
-</div>
+    <canvas id="drawCanvas"></canvas>
 
-<canvas id="cvs" width="800" height="600"></canvas>
+    <script>
+        // !!! PASTE YOUR GOOGLE SCRIPT URL HERE !!!
+        const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbznWr6pH1DLfDXVAKneaQiWKkf-yQFBwm26o9ecU-Z8grk2X7L_lzWrzxP-c02aWMZ1/exec';
 
-<script>
-const config = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
-const pc = new RTCPeerConnection(config);
-let dc = null; // DataChannel
+        const config = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
+        const pc = new RTCPeerConnection(config);
+        let dataChannel = null;
+        let intervalId = null;
 
-// DOM Elements
-const cvs = document.getElementById('cvs');
-const ctx = cvs.getContext('2d');
-const status = document.getElementById('status');
+        // DOM
+        const statusEl = document.getElementById('status');
+        const loginPanel = document.getElementById('loginPanel');
+        const canvas = document.getElementById('drawCanvas');
+        const ctx = canvas.getContext('2d');
+        const roomIdInput = document.getElementById('roomId');
 
-// --- WEBRTC LOGIC ---
+        // Resize canvas
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
 
-// Wait for ICE candidates to complete before showing code
-pc.onicecandidate = e => {
-    if (e.candidate === null) {
-        if (pc.localDescription.type === 'offer') {
-            document.getElementById('hostOffer').value = JSON.stringify(pc.localDescription);
-        } else {
-            document.getElementById('joinAnswer').value = JSON.stringify(pc.localDescription);
+        // --- GOOGLE SHEET API HELPERS ---
+
+        // Send data (POST) - Used for sending Offer/Answer
+        async function sendToSheet(type, sdp) {
+            statusEl.textContent = "Saving to cloud...";
+            const id = roomIdInput.value.trim();
+            
+            // Note: We use no-cors for GAS POST requests usually, but here we treat it as text/plain 
+            // to avoid preflight issues. GAS handles text/plain body easily.
+            await fetch(SCRIPT_URL, {
+                method: 'POST',
+                mode: 'no-cors', 
+                headers: { 'Content-Type': 'text/plain' }, 
+                body: JSON.stringify({ id: id, type: type, sdp: JSON.stringify(sdp) })
+            });
         }
-    }
-};
 
-pc.onconnectionstatechange = () => {
-    if (pc.connectionState === "connected") {
-        document.getElementById('setup').style.display = "none";
-        cvs.style.display = "block";
-    }
-};
+        // Read data (GET) - Used for Polling
+        async function readFromSheet() {
+            const id = roomIdInput.value.trim();
+            const response = await fetch(`${SCRIPT_URL}?id=${id}`);
+            return await response.json();
+        }
 
-// --- HOST FUNCTIONS ---
-async function startHost() {
-    document.getElementById('hostUI').classList.remove('hidden');
-    dc = pc.createDataChannel("draw");
-    dc.onopen = () => console.log("Connected");
-    
-    const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
-    enableDrawing();
-}
+        // --- WEBRTC LOGIC ---
 
-async function hostConnect() {
-    const answer = document.getElementById('hostAnswerInput').value;
-    if(!answer) return alert("Paste Viewer's reply first!");
-    await pc.setRemoteDescription(JSON.parse(answer));
-}
+        pc.onconnectionstatechange = () => {
+            if (pc.connectionState === "connected") {
+                clearInterval(intervalId); // Stop checking the sheet
+                statusEl.textContent = "Connected!";
+                loginPanel.style.display = 'none';
+                canvas.style.display = 'block';
+            }
+        };
 
-// --- JOINER FUNCTIONS ---
-function startJoin() {
-    document.getElementById('joinUI').classList.remove('hidden');
-}
+        // --- HOST FLOW ---
+        async function startHost() {
+            if(!roomIdInput.value) return alert("Enter a Room ID");
+            
+            document.getElementById('btnHost').disabled = true;
+            document.getElementById('btnViewer').disabled = true;
 
-async function joinGenerate() {
-    const offerStr = document.getElementById('joinOfferInput').value;
-    if(!offerStr) return alert("Paste Host's code first!");
-    
-    await pc.setRemoteDescription(JSON.parse(offerStr));
-    
-    pc.ondatachannel = e => {
-        dc = e.channel;
-        dc.onmessage = handleDrawData;
-    };
+            dataChannel = pc.createDataChannel("draw");
+            setupDrawingEvents(); // Host can draw
 
-    const answer = await pc.createAnswer();
-    await pc.setLocalDescription(answer);
-    document.getElementById('joinStep2').classList.remove('hidden');
-}
+            const offer = await pc.createOffer();
+            await pc.setLocalDescription(offer);
 
-// --- DRAWING LOGIC ---
-let drawing = false;
-let last = {x:0, y:0};
+            // Wait for ICE candidates to complete gathering
+            pc.onicecandidate = async (e) => {
+                if (e.candidate === null) {
+                    // 1. Send Offer to Sheet
+                    await sendToSheet('offer', pc.localDescription);
+                    statusEl.textContent = "Offer sent! Waiting for Viewer...";
 
-function enableDrawing() {
-    cvs.addEventListener('mousedown', e => {
-        drawing = true;
-        last = {x: e.offsetX, y: e.offsetY};
-        send({t: 's', x: last.x, y: last.y}); // s = start
-    });
-    cvs.addEventListener('mousemove', e => {
-        if(!drawing) return;
-        draw(last.x, last.y, e.offsetX, e.offsetY);
-        send({t: 'd', x: e.offsetX, y: e.offsetY}); // d = draw
-        last = {x: e.offsetX, y: e.offsetY};
-    });
-    window.addEventListener('mouseup', () => drawing = false);
-}
+                    // 2. Start polling for Answer
+                    intervalId = setInterval(async () => {
+                        const data = await readFromSheet();
+                        if (data.answer && data.answer !== "") {
+                            statusEl.textContent = "Answer found! Connecting...";
+                            const answerDesc = JSON.parse(data.answer);
+                            if(!pc.currentRemoteDescription) {
+                                await pc.setRemoteDescription(answerDesc);
+                            }
+                        }
+                    }, 2000); // Check every 2 seconds
+                }
+            };
+        }
 
-function draw(x1, y1, x2, y2) {
-    ctx.lineWidth = 3;
-    ctx.lineCap = 'round';
-    ctx.beginPath();
-    ctx.moveTo(x1, y1);
-    ctx.lineTo(x2, y2);
-    ctx.stroke();
-}
+        // --- VIEWER FLOW ---
+        async function startViewer() {
+            if(!roomIdInput.value) return alert("Enter a Room ID");
+            
+            document.getElementById('btnHost').disabled = true;
+            document.getElementById('btnViewer').disabled = true;
+            statusEl.textContent = "Looking for Host...";
 
-function send(data) {
-    if(dc && dc.readyState === 'open') dc.send(JSON.stringify(data));
-}
+            // 1. Poll until we find an Offer
+            intervalId = setInterval(async () => {
+                const data = await readFromSheet();
+                
+                // If we found an offer and haven't set it yet
+                if (data.offer && data.offer !== "" && pc.signalingState === "stable") {
+                    clearInterval(intervalId); // Stop polling for offer
+                    statusEl.textContent = "Host found! Joining...";
+                    
+                    const offerDesc = JSON.parse(data.offer);
+                    await pc.setRemoteDescription(offerDesc);
+                    
+                    // Prepare to receive drawing data
+                    pc.ondatachannel = (e) => {
+                        const dc = e.channel;
+                        dc.onmessage = handleIncomingDraw;
+                    };
 
-// Viewer Logic
-let rLast = {x:0, y:0};
-function handleDrawData(e) {
-    const d = JSON.parse(e.data);
-    if(d.t === 's') {
-        rLast = {x: d.x, y: d.y};
-    } else if(d.t === 'd') {
-        draw(rLast.x, rLast.y, d.x, d.y);
-        rLast = {x: d.x, y: d.y};
-    }
-}
-</script>
+                    const answer = await pc.createAnswer();
+                    await pc.setLocalDescription(answer);
+                    
+                    // Wait for ICE completion
+                    pc.onicecandidate = async (ev) => {
+                        if (ev.candidate === null) {
+                             // 2. Send Answer back to Sheet
+                            await sendToSheet('answer', pc.localDescription);
+                            statusEl.textContent = "joined! Finishing connection...";
+                        }
+                    };
+                }
+            }, 2000);
+        }
+
+        // --- DRAWING LOGIC ---
+        let drawing = false;
+        let last = { x: 0, y: 0 };
+
+        function setupDrawingEvents() {
+            // Mouse & Touch support
+            const getPos = (e) => {
+                const rect = canvas.getBoundingClientRect();
+                const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+                const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+                return { 
+                    x: (clientX - rect.left) / canvas.width, // Normalize 0-1
+                    y: (clientY - rect.top) / canvas.height 
+                };
+            };
+
+            const start = (e) => {
+                e.preventDefault();
+                drawing = true;
+                last = getPos(e);
+                sendData({t:'s', x:last.x, y:last.y});
+            };
+
+            const move = (e) => {
+                e.preventDefault();
+                if (!drawing) return;
+                const pos = getPos(e);
+                draw(last.x, last.y, pos.x, pos.y);
+                sendData({t:'d', x:pos.x, y:pos.y});
+                last = pos;
+            };
+
+            const end = () => drawing = false;
+
+            canvas.addEventListener('mousedown', start);
+            canvas.addEventListener('mousemove', move);
+            canvas.addEventListener('mouseup', end);
+            canvas.addEventListener('touchstart', start, {passive: false});
+            canvas.addEventListener('touchmove', move, {passive: false});
+            canvas.addEventListener('touchend', end);
+        }
+
+        function draw(x1, y1, x2, y2) {
+            // Convert normalized coords back to pixels
+            const w = canvas.width;
+            const h = canvas.height;
+            ctx.lineWidth = 3;
+            ctx.lineCap = 'round';
+            ctx.strokeStyle = '#000';
+            ctx.beginPath();
+            ctx.moveTo(x1 * w, y1 * h);
+            ctx.lineTo(x2 * w, y2 * h);
+            ctx.stroke();
+        }
+
+        function sendData(obj) {
+            if (dataChannel && dataChannel.readyState === 'open') {
+                dataChannel.send(JSON.stringify(obj));
+            }
+        }
+
+        // Remote Drawing
+        let rLast = {x:0, y:0};
+        function handleIncomingDraw(e) {
+            const d = JSON.parse(e.data);
+            if(d.t === 's') rLast = {x:d.x, y:d.y};
+            else if(d.t === 'd') {
+                draw(rLast.x, rLast.y, d.x, d.y);
+                rLast = {x:d.x, y:d.y};
+            }
+        }
+    </script>
 </body>
 </html>
