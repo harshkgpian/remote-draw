@@ -3,121 +3,101 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Pro P2P Canvas</title>
+    <title>Smooth P2P Canvas</title>
     
-    <!-- Icons -->
+    <!-- Icons & PDF Lib -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-    <!-- PDF Library -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
     <style>
-        :root { --primary: #2c3e50; --accent: #3498db; --bg: #ecf0f1; }
-        body { margin: 0; overflow: hidden; font-family: sans-serif; background: #333; display: flex; height: 100vh; }
+        :root { --primary: #2c3e50; --accent: #e67e22; --bg: #ecf0f1; }
+        body { margin: 0; overflow: hidden; font-family: sans-serif; background: #333; display: flex; height: 100vh; width: 100vw; }
 
-        /* --- LOGIN MODAL --- */
+        /* --- LOGIN --- */
         #loginOverlay {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.85); z-index: 999;
+            background: rgba(0,0,0,0.9); z-index: 999;
             display: flex; justify-content: center; align-items: center;
         }
-        .login-box { background: white; padding: 30px; border-radius: 12px; text-align: center; width: 90%; max-width: 350px; }
-        .login-box input { width: 80%; padding: 12px; margin: 10px 0; border: 1px solid #ddd; border-radius: 6px; }
-        .btn-main { width: 90%; padding: 12px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; margin-top: 5px; color: white; }
-        .btn-host { background: var(--primary); }
-        .btn-join { background: #27ae60; }
-        #statusMsg { margin-top: 10px; font-size: 12px; color: #666; }
+        .login-box { background: white; padding: 30px; border-radius: 12px; text-align: center; width: 300px; }
+        .login-box input { width: 100%; padding: 10px; margin: 10px 0; box-sizing: border-box; }
+        .btn { width: 100%; padding: 10px; margin: 5px 0; cursor: pointer; border: none; color: white; font-weight: bold; border-radius: 5px; }
+        .btn-host { background: #2980b9; } .btn-join { background: #27ae60; }
 
-        /* --- SIDEBAR --- */
+        /* --- UI --- */
         #sidebar {
             width: 60px; background: var(--primary); display: flex; flex-direction: column; align-items: center; padding-top: 10px; z-index: 100;
-            transition: width 0.3s;
+            box-shadow: 2px 0 5px rgba(0,0,0,0.3);
         }
         .tool-btn {
-            width: 40px; height: 40px; border-radius: 8px; border: none; background: transparent; color: #bdc3c7;
-            font-size: 18px; margin: 5px 0; cursor: pointer; display: flex; justify-content: center; align-items: center;
+            width: 40px; height: 40px; border-radius: 8px; border: none; background: transparent; color: #ecf0f1;
+            font-size: 18px; margin: 8px 0; cursor: pointer; transition: 0.2s;
         }
-        .tool-btn.active { background: var(--accent); color: white; }
-        .tool-btn:hover { color: white; }
+        .tool-btn.active { background: var(--accent); color: white; transform: scale(1.1); }
         
-        /* Color Pickers */
-        .color-opt { width: 25px; height: 25px; border-radius: 50%; border: 2px solid #fff; margin: 5px 0; cursor: pointer; }
+        .color-dot { width: 24px; height: 24px; border-radius: 50%; border: 2px solid #fff; margin: 6px 0; cursor: pointer; }
         
-        /* --- MAIN AREA --- */
-        #main { flex: 1; position: relative; background: #888; display: flex; justify-content: center; align-items: center; overflow: hidden; }
+        #main { flex: 1; position: relative; background: #666; display: flex; justify-content: center; align-items: center; }
         
-        /* The paper */
-        #canvasContainer {
-            position: relative; 
-            background: white; 
-            box-shadow: 0 0 20px rgba(0,0,0,0.5);
-            /* Aspect Ratio for A4-ish feel or Screen feel */
-            width: 100%; height: 100%; 
+        #canvasWrapper {
+            position: relative; width: 100%; height: 100%; background: white; overflow: hidden;
         }
         
-        canvas { display: block; cursor: crosshair; touch-action: none; width: 100%; height: 100%; }
+        canvas { display: block; cursor: crosshair; touch-action: none; }
 
-        /* --- PAGE CONTROLS --- */
         #pageControls {
             position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
-            background: rgba(44, 62, 80, 0.9); padding: 8px 20px; border-radius: 30px;
-            color: white; display: flex; align-items: center; gap: 15px; pointer-events: auto;
+            background: #2c3e50; padding: 8px 20px; border-radius: 30px; color: white; 
+            display: flex; align-items: center; gap: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.3);
         }
-        #pageControls span { font-weight: bold; min-width: 60px; text-align: center; }
         .icon-btn { background: none; border: none; color: white; cursor: pointer; font-size: 16px; }
-        .icon-btn:disabled { color: #7f8c8d; }
 
-        /* --- ROTATION HINT (Mobile) --- */
-        @media screen and (orientation: portrait) {
-            /* Optional: You could force a message here, but we are doing responsive canvas instead */
+        /* Status toast */
+        #toast {
+            position: absolute; top: 10px; right: 10px; background: rgba(0,0,0,0.7); 
+            color: white; padding: 5px 15px; border-radius: 20px; font-size: 12px; pointer-events: none;
         }
     </style>
 </head>
 <body>
 
-    <!-- LOGIN / CONNECTION -->
     <div id="loginOverlay">
         <div class="login-box">
-            <h2><i class="fas fa-pen-fancy"></i> P2P Studio</h2>
-            <p>Enter Room ID</p>
-            <input type="text" id="roomId" placeholder="e.g. 'ArtRoom1'">
-            <button class="btn-main btn-host" onclick="startApp('host')">Create Room (Host)</button>
-            <button class="btn-main btn-join" onclick="startApp('join')">Join Room (Viewer)</button>
-            <div id="statusMsg">Ready to connect</div>
+            <h2><i class="fas fa-palette"></i> ArtSync</h2>
+            <input type="text" id="roomId" placeholder="Enter Room Name">
+            <button class="btn btn-host" onclick="initApp('host')">Create Room (Host)</button>
+            <button class="btn btn-join" onclick="initApp('join')">Join Room (Viewer)</button>
+            <p id="statusText" style="font-size:12px; color:#777;">Waiting...</p>
         </div>
     </div>
 
-    <!-- SIDEBAR -->
     <div id="sidebar">
         <button class="tool-btn active" id="t-pen" onclick="setTool('pen')"><i class="fas fa-pen"></i></button>
         <button class="tool-btn" id="t-eraser" onclick="setTool('eraser')"><i class="fas fa-eraser"></i></button>
         
-        <div style="height: 1px; background: #555; width: 80%; margin: 10px 0;"></div>
-
-        <!-- Colors -->
-        <div class="color-opt" style="background: #000;" onclick="setColor('#000000')"></div>
-        <div class="color-opt" style="background: #e74c3c;" onclick="setColor('#e74c3c')"></div>
-        <div class="color-opt" style="background: #3498db;" onclick="setColor('#3498db')"></div>
-        <div class="color-opt" style="background: #2ecc71;" onclick="setColor('#2ecc71')"></div>
-
-        <div style="height: 1px; background: #555; width: 80%; margin: 10px 0;"></div>
-
-        <!-- Actions -->
-        <button class="tool-btn" title="Download PDF" onclick="downloadPDF()"><i class="fas fa-file-pdf"></i></button>
-        <button class="tool-btn" title="Fullscreen" onclick="toggleFullScreen()"><i class="fas fa-expand"></i></button>
+        <div style="height:1px; bg:#555; width:80%; margin:10px 0;"></div>
+        
+        <div class="color-dot" style="background:#000;" onclick="setColor('#000000')"></div>
+        <div class="color-dot" style="background:#e74c3c;" onclick="setColor('#e74c3c')"></div>
+        <div class="color-dot" style="background:#3498db;" onclick="setColor('#3498db')"></div>
+        <div class="color-dot" style="background:#2ecc71;" onclick="setColor('#2ecc71')"></div>
+        
+        <div style="height:1px; bg:#555; width:80%; margin:auto;"></div>
+        
+        <button class="tool-btn" onclick="downloadPDF()"><i class="fas fa-file-pdf"></i></button>
+        <button class="tool-btn" onclick="toggleFS()"><i class="fas fa-expand"></i></button>
     </div>
 
-    <!-- MAIN CANVAS -->
     <div id="main">
-        <div id="canvasContainer">
-            <canvas id="theCanvas"></canvas>
+        <div id="toast">Offline</div>
+        <div id="canvasWrapper">
+            <canvas id="cvs"></canvas>
         </div>
-
-        <!-- Pagination -->
         <div id="pageControls">
             <button class="icon-btn" onclick="changePage(-1)"><i class="fas fa-chevron-left"></i></button>
-            <span id="pageDisplay">Page 1</span>
+            <span id="pgNum">Page 1</span>
             <button class="icon-btn" onclick="changePage(1)"><i class="fas fa-chevron-right"></i></button>
-            <button class="icon-btn" style="margin-left:10px;" onclick="clearPage()" title="Clear"><i class="fas fa-trash"></i></button>
+            <button class="icon-btn" onclick="clearCanvas()"><i class="fas fa-trash"></i></button>
         </div>
     </div>
 
@@ -127,331 +107,326 @@
         const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbznWr6pH1DLfDXVAKneaQiWKkf-yQFBwm26o9ecU-Z8grk2X7L_lzWrzxP-c02aWMZ1/exec'; 
         // ==========================================
 
-        // --- STATE ---
+        const cvs = document.getElementById('cvs');
+        const ctx = cvs.getContext('2d', { alpha: false }); // Optimization
+        
+        // --- APP STATE ---
         const state = {
             isHost: false,
+            roomId: '',
             tool: 'pen',
             color: '#000000',
-            width: 2,
-            pageIndex: 0,
-            pages: [], // Stores DataURLs
-            drawing: false
+            lineWidth: 3,
+            drawing: false,
+            pages: [],
+            curPage: 0
         };
 
-        // --- DOM ---
-        const canvas = document.getElementById('theCanvas');
-        const ctx = canvas.getContext('2d');
-        const statusMsg = document.getElementById('statusMsg');
-        const pageDisplay = document.getElementById('pageDisplay');
+        // Remote State (What the viewer thinks the host is doing)
+        const remoteState = {
+            x: 0, y: 0,
+            color: '#000000',
+            tool: 'pen',
+            lineWidth: 3
+        };
 
-        // --- WEBRTC SETUP ---
+        // --- WEBRTC ---
         const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
-        let dataChannel;
-        let pollInterval;
+        let dc; // DataChannel
 
-        // Resize Logic
         function resize() {
-            // Save current content
-            const temp = canvas.toDataURL();
-            canvas.width = canvas.parentElement.clientWidth;
-            canvas.height = canvas.parentElement.clientHeight;
+            // Save content
+            const temp = cvs.toDataURL();
+            cvs.width = cvs.parentElement.clientWidth;
+            cvs.height = cvs.parentElement.clientHeight;
             
-            // Restore content (simple restore, might stretch on rotation)
+            // White background (important for eraser)
+            ctx.fillStyle = "#ffffff";
+            ctx.fillRect(0, 0, cvs.width, cvs.height);
+            
+            // Restore content
             const img = new Image();
             img.onload = () => ctx.drawImage(img, 0, 0);
             img.src = temp;
         }
-        window.addEventListener('resize', resize);
+        window.onresize = resize;
 
-        // --- APP STARTUP ---
-        async function startApp(role) {
-            const roomId = document.getElementById('roomId').value.trim();
-            if (!roomId || SCRIPT_URL.includes('YOUR_GOOGLE')) return alert("Check Room ID and Script URL");
-
+        async function initApp(role) {
+            state.roomId = document.getElementById('roomId').value.trim();
+            if(!state.roomId || SCRIPT_URL.includes("YOUR_GOOGLE")) return alert("Config Error");
+            
             state.isHost = (role === 'host');
             document.getElementById('loginOverlay').style.display = 'none';
             resize();
+            savePage();
 
-            // Initialize Page 1
-            saveCurrentPage(); 
-
-            if (state.isHost) {
-                setupHost(roomId);
-                // Only Host controls pagination
+            if(state.isHost) {
+                dc = pc.createDataChannel("draw");
+                setupDC();
+                const offer = await pc.createOffer();
+                await pc.setLocalDescription(offer);
+                pc.onicecandidate = e => !e.candidate && sendSignal('offer', pc.localDescription);
+                poll('answer');
             } else {
-                setupViewer(roomId);
-                // Disable pagination controls for viewer
-                document.querySelectorAll('#pageControls button').forEach(b => b.disabled = true);
+                document.getElementById('pageControls').style.pointerEvents = 'none'; // Disable viewer controls
+                document.getElementById('pageControls').style.opacity = '0.5';
+                poll('offer');
             }
         }
 
-        // --- NETWORK LOGIC (Google Sheet Signaling) ---
-        async function signal(type, data) {
+        // --- SIGNALING ---
+        async function sendSignal(type, data) {
             await fetch(SCRIPT_URL, {
                 method: 'POST', mode: 'no-cors',
-                headers: { 'Content-Type': 'text/plain' },
-                body: JSON.stringify({ id: document.getElementById('roomId').value, type, sdp: JSON.stringify(data) })
+                headers: {'Content-Type': 'text/plain'},
+                body: JSON.stringify({ id: state.roomId, type, sdp: JSON.stringify(data) })
             });
         }
 
-        async function checkSignal() {
-            const res = await fetch(`${SCRIPT_URL}?id=${document.getElementById('roomId').value}`);
-            return await res.json();
-        }
-
-        async function setupHost(roomId) {
-            dataChannel = pc.createDataChannel("art");
-            setupDC();
-            const offer = await pc.createOffer();
-            await pc.setLocalDescription(offer);
-
-            pc.onicecandidate = e => {
-                if (!e.candidate) signal('offer', pc.localDescription);
-            };
-
-            pollInterval = setInterval(async () => {
-                const data = await checkSignal();
-                if (data.answer && !pc.currentRemoteDescription) {
-                    await pc.setRemoteDescription(JSON.parse(data.answer));
-                    clearInterval(pollInterval);
-                }
-            }, 2000);
-        }
-
-        async function setupViewer(roomId) {
-            pollInterval = setInterval(async () => {
-                const data = await checkSignal();
-                if (data.offer && pc.signalingState === "stable") {
-                    clearInterval(pollInterval);
-                    await pc.setRemoteDescription(JSON.parse(data.offer));
-                    
-                    pc.ondatachannel = e => {
-                        dataChannel = e.channel;
-                        setupDC();
-                    };
-
-                    const answer = await pc.createAnswer();
-                    await pc.setLocalDescription(answer);
-                    
-                    pc.onicecandidate = e => {
-                        if (!e.candidate) signal('answer', pc.localDescription);
-                    };
+        function poll(targetType) {
+            const pid = setInterval(async () => {
+                const res = await fetch(`${SCRIPT_URL}?id=${state.roomId}`);
+                const json = await res.json();
+                
+                if(targetType === 'answer' && json.answer) {
+                    clearInterval(pid);
+                    pc.setRemoteDescription(JSON.parse(json.answer));
+                } 
+                else if(targetType === 'offer' && json.offer) {
+                    clearInterval(pid);
+                    pc.setRemoteDescription(JSON.parse(json.offer));
+                    pc.ondatachannel = e => { dc = e.channel; setupDC(); };
+                    const ans = await pc.createAnswer();
+                    await pc.setLocalDescription(ans);
+                    pc.onicecandidate = e => !e.candidate && sendSignal('answer', pc.localDescription);
                 }
             }, 2000);
         }
 
         function setupDC() {
-            dataChannel.onopen = () => console.log("CONNECTED");
-            dataChannel.onmessage = (e) => handleRemoteData(JSON.parse(e.data));
+            document.getElementById('toast').innerText = "Connected";
+            document.getElementById('toast').style.backgroundColor = "#27ae60";
+            dc.onmessage = e => handleMsg(JSON.parse(e.data));
         }
 
         function send(data) {
-            if (dataChannel && dataChannel.readyState === 'open') dataChannel.send(JSON.stringify(data));
+            if(dc && dc.readyState === 'open') dc.send(JSON.stringify(data));
         }
 
-        // --- DRAWING ENGINE (Quadratic Smoothing) ---
-        // We send coordinates. To make it smooth, we use the "midpoint" technique.
+        // --- DRAWING ENGINE (BEZIER INTERPOLATION) ---
         
-        let points = []; // Buffer for smoothing
+        function getPos(e) {
+            const r = cvs.getBoundingClientRect();
+            const t = e.touches ? e.touches[0] : e;
+            return { x: t.clientX - r.left, y: t.clientY - r.top };
+        }
 
-        function startDraw(e) {
-            if (!state.isHost && !dataChannel) return; // Viewers can't draw until connected (or at all if you prefer)
-            // If you want ONLY host to draw, uncomment next line:
-            // if (!state.isHost) return; 
+        // Local Draw Handlers
+        cvs.addEventListener('mousedown', start);
+        cvs.addEventListener('touchstart', start, {passive: false});
+        
+        cvs.addEventListener('mousemove', move);
+        cvs.addEventListener('touchmove', move, {passive: false});
+        
+        window.addEventListener('mouseup', end);
+        window.addEventListener('touchend', end);
 
+        let points = [];
+
+        function start(e) {
+            if(!state.isHost && !dc) return; // Allow viewer to draw locally? Usually no.
+            // Uncomment to lock viewer drawing: if(!state.isHost) return; 
+            
+            e.preventDefault(); // Prevent scroll
             state.drawing = true;
-            const pos = getPos(e);
-            points = [pos]; // Start new stroke
+            const p = getPos(e);
+            points = [p]; // Start path
+            
+            // Configure Context IMMEDIATELY
+            configureContext(ctx, state.tool, state.color, state.lineWidth);
             
             ctx.beginPath();
-            ctx.moveTo(pos.x, pos.y);
-            // No "start" signal needed for canvas, just context setup
+            ctx.moveTo(p.x, p.y);
             
-            send({ t: 'down', x: pos.x / canvas.width, y: pos.y / canvas.height, c: state.color, w: state.width, tl: state.tool });
+            // Send Start Signal (Contains Color/Tool info!)
+            send({ 
+                t: 's', 
+                x: p.x / cvs.width, 
+                y: p.y / cvs.height,
+                c: state.color,
+                w: state.lineWidth,
+                tl: state.tool 
+            });
         }
 
-        function moveDraw(e) {
-            if (!state.drawing) return;
-            const pos = getPos(e);
-            points.push(pos);
-
-            // Local Draw
-            if (points.length > 2) {
+        function move(e) {
+            if(!state.drawing) return;
+            e.preventDefault();
+            const p = getPos(e);
+            points.push(p);
+            
+            // Smooth Curve Logic
+            if(points.length > 2) {
                 const last = points[points.length - 2];
                 const prev = points[points.length - 3];
-                // Calculate control point (midpoint)
-                const cpx = (prev.x + last.x) / 2;
-                const cpy = (prev.y + last.y) / 2;
+                const midX = (last.x + p.x) / 2;
+                const midY = (last.y + p.y) / 2;
                 
-                drawCurve(cpx, cpy, last.x, last.y, state.tool, state.color, state.width);
+                // We draw from the previous midpoint to the current midpoint
+                // Using 'last' as the control point.
+                // NOTE: For realtime, we cheat slightly and use quadCurveTo
+                // from last point to current point, but using midpoint is smoother.
+                
+                // Simplest smooth approach for P2P:
+                ctx.quadraticCurveTo(last.x, last.y, (last.x + p.x)/2, (last.y + p.y)/2);
+                ctx.stroke();
+            } else {
+                // Just starting, draw line to get immediate feedback
+                ctx.lineTo(p.x, p.y);
+                ctx.stroke();
             }
 
-            send({ t: 'move', x: pos.x / canvas.width, y: pos.y / canvas.height });
+            send({ t: 'm', x: p.x / cvs.width, y: p.y / cvs.height });
         }
 
-        function endDraw() {
+        function end() {
+            if(!state.drawing) return;
             state.drawing = false;
+            ctx.closePath();
             points = [];
-            send({ t: 'up' });
-            saveCurrentPage(); // Save state after stroke
+            savePage();
+            send({ t: 'e' }); // End
         }
 
-        function getPos(e) {
-            const rect = canvas.getBoundingClientRect();
-            const c = e.touches ? e.touches[0] : e;
-            return { x: c.clientX - rect.left, y: c.clientY - rect.top };
+        // Helper to set context props
+        function configureContext(context, tool, color, width) {
+            context.lineCap = 'round';
+            context.lineJoin = 'round';
+            if(tool === 'eraser') {
+                context.globalCompositeOperation = 'destination-out';
+                context.lineWidth = 20;
+            } else {
+                context.globalCompositeOperation = 'source-over';
+                context.strokeStyle = color;
+                context.lineWidth = width;
+            }
         }
 
-        function drawCurve(sx, sy, ex, ey, tool, color, width) {
-            ctx.globalCompositeOperation = (tool === 'eraser') ? 'destination-out' : 'source-over';
-            ctx.lineWidth = (tool === 'eraser') ? 20 : width;
-            ctx.strokeStyle = color;
-            ctx.lineCap = 'round';
-            ctx.lineJoin = 'round';
-
-            // Simple Quad Curve for smoothing
-            ctx.beginPath();
-            ctx.moveTo(sx, sy);
-            ctx.quadraticCurveTo(sx, sy, ex, ey); // Simplified for realtime speed
-            ctx.lineTo(ex, ey);
-            ctx.stroke();
-        }
-
-        // Events
-        canvas.addEventListener('mousedown', startDraw);
-        canvas.addEventListener('mousemove', moveDraw);
-        window.addEventListener('mouseup', endDraw);
-        canvas.addEventListener('touchstart', startDraw, {passive:false});
-        canvas.addEventListener('touchmove', (e)=>{ e.preventDefault(); moveDraw(e); }, {passive:false});
-        canvas.addEventListener('touchend', endDraw);
-
-        // --- REMOTE DRAWING HANDLER ---
+        // --- REMOTE HANDLER ---
+        // This ensures Viewer sees exactly what Host sets
         let rPoints = [];
         
-        function handleRemoteData(d) {
-            const w = canvas.width;
-            const h = canvas.height;
+        function handleMsg(d) {
+            const w = cvs.width;
+            const h = cvs.height;
 
-            if (d.t === 'down') {
-                rPoints = [{ x: d.x * w, y: d.y * h }];
-                // Set remote context (though drawCurve handles it)
-            } 
-            else if (d.t === 'move') {
-                const curr = { x: d.x * w, y: d.y * h };
-                rPoints.push(curr);
+            if(d.t === 's') {
+                // Start: Update Remote State with Tool/Color info
+                remoteState.tool = d.tl;
+                remoteState.color = d.c;
+                remoteState.lineWidth = d.w;
                 
-                if (rPoints.length > 2) {
+                const rx = d.x * w;
+                const ry = d.y * h;
+                rPoints = [{x: rx, y: ry}];
+
+                // Configure Context for Remote Stroke
+                configureContext(ctx, remoteState.tool, remoteState.color, remoteState.lineWidth);
+                
+                ctx.beginPath();
+                ctx.moveTo(rx, ry);
+            }
+            else if(d.t === 'm') {
+                const p = { x: d.x * w, y: d.y * h };
+                rPoints.push(p);
+                
+                // Apply same smoothing logic
+                if(rPoints.length > 2) {
                     const last = rPoints[rPoints.length - 2];
-                    const prev = rPoints[rPoints.length - 3];
-                    const cpx = (prev.x + last.x) / 2;
-                    const cpy = (prev.y + last.y) / 2;
-                    // Note: We need to pass the Remote's tool/color settings. 
-                    // Simplified: In a real app, 'down' event stores these in a 'remoteState' obj.
-                    // For now, we assume the 'down' packet had the info, but we need to store it.
-                    // To keep this single-file simple, we will just draw a line.
-                    
-                    // Better approach for sync: Just draw lineTo for remote to avoid lag
-                    ctx.globalCompositeOperation = (d.tl === 'eraser') ? 'destination-out' : 'source-over'; // This requires storing 'tl' from 'down'
-                    ctx.lineWidth = 3; // Simplified
-                    ctx.strokeStyle = '#000'; // Simplified
-                    
-                    // Actually, let's just do simple lines for remote to ensure it works reliably in this demo
-                    ctx.beginPath();
-                    ctx.moveTo(last.x, last.y);
-                    ctx.lineTo(curr.x, curr.y);
+                    ctx.quadraticCurveTo(last.x, last.y, (last.x + p.x)/2, (last.y + p.y)/2);
+                    ctx.stroke();
+                } else {
+                    ctx.lineTo(p.x, p.y);
                     ctx.stroke();
                 }
             }
-            else if (d.t === 'page') {
-                // Remote changed page
-                state.pageIndex = d.idx;
-                loadPage(d.idx);
-                pageDisplay.innerText = `Page ${d.idx + 1}`;
+            else if(d.t === 'e') {
+                ctx.closePath();
+                rPoints = [];
+                savePage();
             }
-            else if (d.t === 'clear') {
-                ctx.clearRect(0,0,canvas.width, canvas.height);
-                saveCurrentPage();
+            else if(d.t === 'pg') {
+                state.curPage = d.i;
+                loadPage(d.i);
+                document.getElementById('pgNum').innerText = "Page " + (d.i+1);
+            }
+            else if(d.t === 'cls') {
+                ctx.fillStyle = "#ffffff";
+                ctx.fillRect(0,0,cvs.width, cvs.height);
+                savePage();
             }
         }
 
-        // --- TOOLS & UI ---
+        // --- TOOLS ---
         function setTool(t) {
             state.tool = t;
             document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
             document.getElementById(t === 'pen' ? 't-pen' : 't-eraser').classList.add('active');
         }
-
         function setColor(c) {
             state.color = c;
-            setTool('pen'); // Switch back to pen if picking color
+            setTool('pen');
+        }
+        function toggleFS() {
+            if(!document.fullscreenElement) document.documentElement.requestFullscreen();
+            else document.exitFullscreen();
+        }
+        function clearCanvas() {
+            if(confirm("Clear Page?")) {
+                ctx.fillStyle = "#ffffff";
+                ctx.fillRect(0,0,cvs.width, cvs.height);
+                savePage();
+                send({t:'cls'});
+            }
         }
 
-        function toggleFullScreen() {
-            if (!document.fullscreenElement) document.documentElement.requestFullscreen();
-            else if (document.exitFullscreen) document.exitFullscreen();
-            setTimeout(resize, 500);
+        // --- PAGES & PDF ---
+        function savePage() {
+            state.pages[state.curPage] = cvs.toDataURL();
         }
-
-        // --- PAGINATION LOGIC ---
-        function saveCurrentPage() {
-            state.pages[state.pageIndex] = canvas.toDataURL();
-        }
-
-        function loadPage(index) {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            if (state.pages[index]) {
+        function loadPage(i) {
+            ctx.fillStyle = "#ffffff";
+            ctx.fillRect(0,0,cvs.width, cvs.height);
+            if(state.pages[i]) {
                 const img = new Image();
-                img.onload = () => ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-                img.src = state.pages[index];
+                img.onload = () => ctx.drawImage(img, 0, 0, cvs.width, cvs.height);
+                img.src = state.pages[i];
             }
         }
-
         function changePage(dir) {
-            if (!state.isHost) return; // Only Host changes pages
-
-            saveCurrentPage();
-            
-            const newIndex = state.pageIndex + dir;
-            if (newIndex < 0) return;
-            
-            state.pageIndex = newIndex;
-            loadPage(newIndex);
-            
-            pageDisplay.innerText = `Page ${newIndex + 1}`;
-            
-            // Notify Viewer
-            send({ t: 'page', idx: newIndex });
+            if(!state.isHost) return;
+            savePage();
+            const next = state.curPage + dir;
+            if(next < 0) return;
+            state.curPage = next;
+            loadPage(next);
+            document.getElementById('pgNum').innerText = "Page " + (next+1);
+            send({t:'pg', i: next});
         }
 
-        function clearPage() {
-            if (!confirm("Clear this page?")) return;
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            saveCurrentPage();
-            send({ t: 'clear' });
-        }
-
-        // --- PDF EXPORT ---
-        async function downloadPDF() {
-            saveCurrentPage(); // Ensure current work is saved
+        function downloadPDF() {
+            savePage();
             const { jsPDF } = window.jspdf;
-            const pdf = new jsPDF({ orientation: 'landscape' }); // Default landscape
+            const doc = new jsPDF({ orientation: 'landscape' });
+            const w = doc.internal.pageSize.getWidth();
+            const h = doc.internal.pageSize.getHeight();
             
-            const width = pdf.internal.pageSize.getWidth();
-            const height = pdf.internal.pageSize.getHeight();
-
-            for (let i = 0; i < state.pages.length; i++) {
-                if (i > 0) pdf.addPage();
-                if (state.pages[i]) {
-                    // Add white background first (Canvas is transparent)
-                    pdf.setFillColor(255, 255, 255);
-                    pdf.rect(0, 0, width, height, 'F');
-                    // Add image
-                    pdf.addImage(state.pages[i], 'PNG', 0, 0, width, height);
-                }
-            }
-            pdf.save('my_sketchbook.pdf');
+            state.pages.forEach((imgData, i) => {
+                if(i > 0) doc.addPage();
+                if(imgData) doc.addImage(imgData, 'PNG', 0, 0, w, h);
+            });
+            doc.save('sketchbook.pdf');
         }
-
     </script>
 </body>
 </html>
