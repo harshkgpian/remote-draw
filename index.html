@@ -3,10 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>P2P Canvas (Stable)</title>
+    <title>P2P Canvas (Fixed)</title>
     
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <!-- Changed CDN to unpkg and added security attributes to prevent blocking -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
+    <script src="https://unpkg.com/jspdf@latest/dist/jspdf.umd.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 
     <style>
         :root { --primary: #2c3e50; --accent: #e67e22; }
@@ -108,11 +109,8 @@
 
         // --- WEBRTC EVENTS ---
         pc.onconnectionstatechange = () => {
-            console.log("Connection State:", pc.connectionState);
             if(pc.connectionState === 'connected') {
-                // STOP POLLING ON CONNECT
-                clearInterval(pollInterval);
-                
+                clearInterval(pollInterval); // Stop polling
                 document.getElementById('loginOverlay').style.display = 'none';
                 document.getElementById('appContainer').style.display = 'flex';
                 resize();
@@ -160,14 +158,14 @@
                     headers: {'Content-Type': 'text/plain'},
                     body: JSON.stringify({ id: state.roomId, type, sdp: JSON.stringify(data) })
                 });
-            } catch(e) { console.error(e); }
+            } catch(e) { console.error("Signal Error", e); }
         }
 
         function poll(targetType) {
             pollInterval = setInterval(async () => {
                 try {
-                    // STOP if already connected (Double Safety)
-                    if(pc.signalingState === "stable" && targetType === 'answer') {
+                    // SAFETY CHECK: Stop if already connected
+                    if(pc.connectionState === 'connected' || pc.signalingState === "stable" && targetType === 'answer') {
                         clearInterval(pollInterval);
                         return;
                     }
@@ -177,16 +175,18 @@
                     
                     // HOST WAITING FOR ANSWER
                     if(targetType === 'answer' && json.answer) {
+                        // ONLY ACCEPT IF WE ARE WAITING FOR IT
                         if(pc.signalingState === "have-local-offer") {
-                            clearInterval(pollInterval); // STOP POLLING
+                            clearInterval(pollInterval);
                             statusText.innerText = "Connecting...";
                             await pc.setRemoteDescription(JSON.parse(json.answer));
                         }
                     } 
                     // VIEWER WAITING FOR OFFER
                     else if(targetType === 'offer' && json.offer) {
-                        if(pc.signalingState === "stable") { // Only if we haven't set remote yet (viewer starts stable)
-                            clearInterval(pollInterval); // STOP POLLING
+                        // ONLY ACCEPT IF WE ARE STABLE (Initial state)
+                        if(pc.signalingState === "stable") { 
+                            clearInterval(pollInterval);
                             statusText.innerText = "Joining...";
                             
                             await pc.setRemoteDescription(JSON.parse(json.offer));
@@ -201,7 +201,7 @@
                             };
                         }
                     }
-                } catch(e) { console.log("Polling error", e); }
+                } catch(e) { console.log("Polling..."); }
             }, 2000);
         }
 
@@ -218,8 +218,7 @@
             const temp = cvs.toDataURL();
             cvs.width = cvs.parentElement.clientWidth;
             cvs.height = cvs.parentElement.clientHeight;
-            // White background for eraser
-            ctx.fillStyle = "#ffffff";
+            ctx.fillStyle = "#ffffff"; // White bg for eraser
             ctx.fillRect(0,0,cvs.width, cvs.height);
             const img = new Image();
             img.onload = () => ctx.drawImage(img, 0, 0);
@@ -235,9 +234,9 @@
 
         function configCtx(c, tool, color, width) {
             c.lineCap = 'round'; c.lineJoin = 'round';
-            c.globalCompositeOperation = 'source-over'; // Always paint on top
+            c.globalCompositeOperation = 'source-over'; 
             if(tool === 'eraser') {
-                c.strokeStyle = '#ffffff'; // WHITE PAINT
+                c.strokeStyle = '#ffffff'; 
                 c.lineWidth = 30;
             } else {
                 c.strokeStyle = color;
@@ -304,7 +303,6 @@
                 remoteState.tool = d.tl; remoteState.color = d.c; remoteState.lineWidth = d.w;
                 const rx = d.x * w; const ry = d.y * h;
                 rPoints = [{x:rx, y:ry}];
-                
                 configCtx(ctx, remoteState.tool, remoteState.color, remoteState.lineWidth);
                 ctx.beginPath();
                 ctx.moveTo(rx, ry);
@@ -334,7 +332,6 @@
         }
         function setColor(c) { state.color = c; setTool('pen'); }
         function toggleFS() { if(!document.fullscreenElement) document.documentElement.requestFullscreen(); else document.exitFullscreen(); }
-        
         function clearCanvas() {
             if(confirm("Clear Page?")) {
                 ctx.fillStyle="#ffffff"; ctx.fillRect(0,0,cvs.width, cvs.height);
@@ -342,8 +339,7 @@
                 send({t:'cls'});
             }
         }
-
-        // --- HELPERS ---
+        // --- PAGES ---
         function savePage() { state.pages[state.curPage] = cvs.toDataURL(); }
         function loadPage(i) {
             ctx.fillStyle="#ffffff"; ctx.fillRect(0,0,cvs.width, cvs.height);
@@ -363,17 +359,29 @@
             document.getElementById('pgNum').innerText = "Page "+(next+1);
             send({t:'pg', i:next});
         }
+
+        // --- PDF ---
         function downloadPDF() {
+            // Safety check if library is blocked
+            if(!window.jspdf || !window.jspdf.jsPDF) {
+                alert("PDF Library was blocked by your browser. Drawing still works, but PDF export is disabled.");
+                return;
+            }
             savePage();
-            const { jsPDF } = window.jspdf;
-            const doc = new jsPDF({ orientation: 'landscape' });
-            const w = doc.internal.pageSize.getWidth();
-            const h = doc.internal.pageSize.getHeight();
-            state.pages.forEach((d, i) => {
-                if(i>0) doc.addPage();
-                if(d) doc.addImage(d, 'PNG', 0, 0, w, h);
-            });
-            doc.save('art_project.pdf');
+            try {
+                const { jsPDF } = window.jspdf;
+                const doc = new jsPDF({ orientation: 'landscape' });
+                const w = doc.internal.pageSize.getWidth();
+                const h = doc.internal.pageSize.getHeight();
+                state.pages.forEach((d, i) => {
+                    if(i>0) doc.addPage();
+                    if(d) doc.addImage(d, 'PNG', 0, 0, w, h);
+                });
+                doc.save('art_project.pdf');
+            } catch(e) {
+                console.error(e);
+                alert("Error generating PDF.");
+            }
         }
     </script>
 </body>
