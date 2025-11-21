@@ -1,158 +1,293 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Simple P2P Draw</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>QR P2P Draw</title>
+    
+    <!-- 1. QR Generator -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <!-- 2. QR Scanner -->
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+    <!-- 3. Text Compressor (To make QR codes smaller) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js"></script>
+
     <style>
-        body { font-family: sans-serif; padding: 20px; display: flex; flex-direction: column; align-items: center; }
-        .box { border: 1px solid #ccc; padding: 20px; border-radius: 8px; background: #f9f9f9; max-width: 600px; width: 100%; }
-        textarea { width: 100%; height: 60px; font-size: 10px; margin-top: 5px; }
-        button { padding: 10px 20px; cursor: pointer; background: #444; color: #fff; border: none; margin: 5px 0; }
-        canvas { border: 2px solid #000; margin-top: 20px; cursor: crosshair; background: #fff; display: none; }
-        .hidden { display: none; }
+        body { font-family: sans-serif; margin: 0; padding: 0; background: #222; color: white; display: flex; flex-direction: column; align-items: center; height: 100vh; overflow: hidden; }
+        
+        /* UI Containers */
+        #setup { width: 100%; max-width: 500px; padding: 20px; box-sizing: border-box; text-align: center; z-index: 10; background: #222; overflow-y: auto; height: 100%; }
+        
+        h2 { margin-top: 0; color: #eee; }
+        p { font-size: 14px; color: #bbb; }
+
+        button { width: 100%; padding: 15px; margin: 10px 0; font-size: 18px; border: none; border-radius: 8px; background: #007bff; color: white; cursor: pointer; }
+        button.scan-btn { background: #28a745; }
+        
+        /* QR & Camera specific */
+        #qrcode { background: white; padding: 10px; display: inline-block; margin: 10px 0; border-radius: 4px; }
+        #reader { width: 100%; border-radius: 8px; overflow: hidden; display: none; background: black; }
+        
+        /* Canvas */
+        canvas { display: none; background: white; cursor: crosshair; touch-action: none; }
+        
+        .step-section { display: none; border-top: 1px solid #444; margin-top: 20px; padding-top: 20px; }
+        .visible { display: block; }
     </style>
 </head>
 <body>
 
-<div id="setup" class="box">
-    <h2>Choose Role</h2>
-    <button onclick="startHost()">I am HOST (Drawer)</button>
-    <button onclick="startJoin()">I am VIEWER (Watcher)</button>
-    <div id="status" style="margin-top:10px; font-weight:bold; color:red;"></div>
-
-    <!-- Host UI -->
-    <div id="hostUI" class="hidden">
-        <p>1. Copy this code and send to Viewer:</p>
-        <textarea id="hostOffer" readonly>Generating...</textarea>
-        <p>2. Paste the code the Viewer sent back:</p>
-        <textarea id="hostAnswerInput" placeholder="Paste Viewer's reply here..."></textarea>
-        <button onclick="hostConnect()">Finish Connection</button>
-    </div>
-
-    <!-- Viewer UI -->
-    <div id="joinUI" class="hidden">
-        <p>1. Paste Host's code here:</p>
-        <textarea id="joinOfferInput"></textarea>
-        <button onclick="joinGenerate()">Generate Reply</button>
-        <div id="joinStep2" class="hidden">
-            <p>2. Copy this reply and send back to Host:</p>
-            <textarea id="joinAnswer" readonly>Generating...</textarea>
+    <div id="setup">
+        <h2>QR P2P Canvas</h2>
+        
+        <!-- Initial Selection -->
+        <div id="roleSelect">
+            <button onclick="initHost()">I am HOST (Draw on PC)</button>
+            <button onclick="initViewer()">I am VIEWER (Phone)</button>
         </div>
+
+        <!-- HOST UI -->
+        <div id="hostUI" class="step-section">
+            <h3>Step 1: Host</h3>
+            <p>Scan this with your Phone:</p>
+            <div id="hostQrContainer"></div>
+            <p>Once Phone has scanned and generated a reply...</p>
+            <button class="scan-btn" onclick="startScanner('host')">Scan Phone's Reply</button>
+        </div>
+
+        <!-- VIEWER UI -->
+        <div id="viewerUI" class="step-section">
+            <h3>Step 2: Viewer</h3>
+            <button class="scan-btn" onclick="startScanner('viewer')">Scan Host QR</button>
+            
+            <div id="viewerReplySection" style="display:none;">
+                <p>Show this to Host:</p>
+                <div id="viewerQrContainer"></div>
+            </div>
+        </div>
+
+        <!-- Camera Container -->
+        <div id="reader"></div>
+        <p id="status">Status: Waiting...</p>
     </div>
-</div>
 
-<canvas id="cvs" width="800" height="600"></canvas>
+    <canvas id="drawCanvas"></canvas>
 
-<script>
-const config = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
-const pc = new RTCPeerConnection(config);
-let dc = null; // DataChannel
+    <script>
+        // --- CONFIG ---
+        const config = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
+        const pc = new RTCPeerConnection(config);
+        let dataChannel = null;
+        let html5QrCode = null;
+        let isHost = false;
 
-// DOM Elements
-const cvs = document.getElementById('cvs');
-const ctx = cvs.getContext('2d');
-const status = document.getElementById('status');
+        // --- DOM ---
+        const canvas = document.getElementById('drawCanvas');
+        const ctx = canvas.getContext('2d');
+        const statusEl = document.getElementById('status');
+        const setupEl = document.getElementById('setup');
 
-// --- WEBRTC LOGIC ---
+        // --- WEBRTC SETUP ---
+        
+        pc.onicecandidate = e => {
+            if (e.candidate === null) {
+                // Gathering done. Compress and Show QR.
+                const rawData = JSON.stringify(pc.localDescription);
+                const compressed = LZString.compressToEncodedURIComponent(rawData);
+                
+                if(isHost) {
+                    generateQR("hostQrContainer", compressed);
+                    statusEl.innerText = "Status: Host QR Ready. Scan with phone.";
+                } else {
+                    generateQR("viewerQrContainer", compressed);
+                    document.getElementById('viewerReplySection').style.display = "block";
+                    statusEl.innerText = "Status: Answer Ready. Show to Host.";
+                }
+            }
+        };
 
-// Wait for ICE candidates to complete before showing code
-pc.onicecandidate = e => {
-    if (e.candidate === null) {
-        if (pc.localDescription.type === 'offer') {
-            document.getElementById('hostOffer').value = JSON.stringify(pc.localDescription);
-        } else {
-            document.getElementById('joinAnswer').value = JSON.stringify(pc.localDescription);
+        pc.onconnectionstatechange = () => {
+            statusEl.innerText = "Status: " + pc.connectionState;
+            if (pc.connectionState === "connected") {
+                // Connection success! Hide setup, show canvas
+                setupEl.style.display = "none";
+                canvas.style.display = "block";
+                resizeCanvas();
+                
+                if(isHost) {
+                    enableDrawing();
+                }
+            }
+        };
+
+        // --- LOGIC FLOW ---
+
+        async function initHost() {
+            isHost = true;
+            document.getElementById('roleSelect').style.display = 'none';
+            document.getElementById('hostUI').classList.add('visible');
+
+            dataChannel = pc.createDataChannel("draw");
+            dataChannel.onopen = () => console.log("Data Channel Open");
+
+            const offer = await pc.createOffer();
+            await pc.setLocalDescription(offer);
+            statusEl.innerText = "Generating Offer...";
         }
-    }
-};
 
-pc.onconnectionstatechange = () => {
-    if (pc.connectionState === "connected") {
-        document.getElementById('setup').style.display = "none";
-        cvs.style.display = "block";
-    }
-};
+        function initViewer() {
+            isHost = false;
+            document.getElementById('roleSelect').style.display = 'none';
+            document.getElementById('viewerUI').classList.add('visible');
+        }
 
-// --- HOST FUNCTIONS ---
-async function startHost() {
-    document.getElementById('hostUI').classList.remove('hidden');
-    dc = pc.createDataChannel("draw");
-    dc.onopen = () => console.log("Connected");
-    
-    const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
-    enableDrawing();
-}
+        // --- QR & CAMERA ---
 
-async function hostConnect() {
-    const answer = document.getElementById('hostAnswerInput').value;
-    if(!answer) return alert("Paste Viewer's reply first!");
-    await pc.setRemoteDescription(JSON.parse(answer));
-}
+        function generateQR(elementId, text) {
+            document.getElementById(elementId).innerHTML = "";
+            // Add a prefix to ensure we know it's our data
+            new QRCode(document.getElementById(elementId), {
+                text: "P2P:" + text,
+                width: 200,
+                height: 200
+            });
+        }
 
-// --- JOINER FUNCTIONS ---
-function startJoin() {
-    document.getElementById('joinUI').classList.remove('hidden');
-}
+        function startScanner(role) {
+            const readerEl = document.getElementById('reader');
+            readerEl.style.display = "block";
+            
+            html5QrCode = new Html5Qrcode("reader");
+            
+            html5QrCode.start(
+                { facingMode: "environment" }, 
+                { fps: 10, qrbox: 250 },
+                (decodedText, decodedResult) => {
+                    // Success callback
+                    if(decodedText.startsWith("P2P:")) {
+                        handleScanSuccess(decodedText.substring(4), role); // Remove prefix
+                        html5QrCode.stop().then(() => {
+                            readerEl.style.display = "none";
+                        });
+                    }
+                },
+                (errorMessage) => { /* ignore errors for scanning frames */ }
+            ).catch(err => {
+                alert("Camera error: " + err);
+            });
+        }
 
-async function joinGenerate() {
-    const offerStr = document.getElementById('joinOfferInput').value;
-    if(!offerStr) return alert("Paste Host's code first!");
-    
-    await pc.setRemoteDescription(JSON.parse(offerStr));
-    
-    pc.ondatachannel = e => {
-        dc = e.channel;
-        dc.onmessage = handleDrawData;
-    };
+        async function handleScanSuccess(compressedData, role) {
+            try {
+                const jsonStr = LZString.decompressFromEncodedURIComponent(compressedData);
+                const data = JSON.parse(jsonStr);
 
-    const answer = await pc.createAnswer();
-    await pc.setLocalDescription(answer);
-    document.getElementById('joinStep2').classList.remove('hidden');
-}
+                await pc.setRemoteDescription(data);
 
-// --- DRAWING LOGIC ---
-let drawing = false;
-let last = {x:0, y:0};
+                if (role === 'viewer') {
+                    // Viewer scanned Offer, now create Answer
+                    pc.ondatachannel = e => {
+                        dataChannel = e.channel;
+                        dataChannel.onmessage = handleIncomingDraw;
+                    };
+                    const answer = await pc.createAnswer();
+                    await pc.setLocalDescription(answer);
+                } else {
+                    // Host scanned Answer, connection should start
+                    statusEl.innerText = "Connecting...";
+                }
 
-function enableDrawing() {
-    cvs.addEventListener('mousedown', e => {
-        drawing = true;
-        last = {x: e.offsetX, y: e.offsetY};
-        send({t: 's', x: last.x, y: last.y}); // s = start
-    });
-    cvs.addEventListener('mousemove', e => {
-        if(!drawing) return;
-        draw(last.x, last.y, e.offsetX, e.offsetY);
-        send({t: 'd', x: e.offsetX, y: e.offsetY}); // d = draw
-        last = {x: e.offsetX, y: e.offsetY};
-    });
-    window.addEventListener('mouseup', () => drawing = false);
-}
+            } catch (e) {
+                alert("Error reading QR. Try getting closer or adjusting light.");
+                console.error(e);
+            }
+        }
 
-function draw(x1, y1, x2, y2) {
-    ctx.lineWidth = 3;
-    ctx.lineCap = 'round';
-    ctx.beginPath();
-    ctx.moveTo(x1, y1);
-    ctx.lineTo(x2, y2);
-    ctx.stroke();
-}
+        // --- DRAWING LOGIC ---
 
-function send(data) {
-    if(dc && dc.readyState === 'open') dc.send(JSON.stringify(data));
-}
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.onresize = resizeCanvas;
 
-// Viewer Logic
-let rLast = {x:0, y:0};
-function handleDrawData(e) {
-    const d = JSON.parse(e.data);
-    if(d.t === 's') {
-        rLast = {x: d.x, y: d.y};
-    } else if(d.t === 'd') {
-        draw(rLast.x, rLast.y, d.x, d.y);
-        rLast = {x: d.x, y: d.y};
-    }
-}
-</script>
+        let drawing = false;
+        let lastPos = { x: 0, y: 0 };
+
+        function enableDrawing() {
+            // Mouse
+            canvas.addEventListener('mousedown', startDraw);
+            canvas.addEventListener('mousemove', moveDraw);
+            canvas.addEventListener('mouseup', endDraw);
+            // Touch
+            canvas.addEventListener('touchstart', e => {
+                e.preventDefault();
+                const touch = e.touches[0];
+                startDraw({ offsetX: touch.clientX, offsetY: touch.clientY });
+            }, {passive: false});
+            canvas.addEventListener('touchmove', e => {
+                e.preventDefault();
+                const touch = e.touches[0];
+                moveDraw({ offsetX: touch.clientX, offsetY: touch.clientY });
+            }, {passive: false});
+            canvas.addEventListener('touchend', endDraw);
+        }
+
+        function startDraw(e) {
+            drawing = true;
+            lastPos = { x: e.offsetX, y: e.offsetY };
+            sendData({ t: 's', x: lastPos.x, y: lastPos.y, w: canvas.width, h: canvas.height });
+        }
+
+        function moveDraw(e) {
+            if (!drawing) return;
+            drawLine(lastPos.x, lastPos.y, e.offsetX, e.offsetY);
+            sendData({ t: 'd', x: e.offsetX, y: e.offsetY }); // Sending normalized data is better, but absolute for simplicity here
+            lastPos = { x: e.offsetX, y: e.offsetY };
+        }
+
+        function endDraw() { drawing = false; }
+
+        function drawLine(x1, y1, x2, y2) {
+            ctx.beginPath();
+            ctx.strokeStyle = 'black';
+            ctx.lineWidth = 3;
+            ctx.lineCap = 'round';
+            ctx.moveTo(x1, y1);
+            ctx.lineTo(x2, y2);
+            ctx.stroke();
+        }
+
+        function sendData(data) {
+            if (dataChannel && dataChannel.readyState === 'open') {
+                // We send relative coordinates (0.0 to 1.0) so it works on different screen sizes
+                const payload = {
+                    t: data.t,
+                    x: data.x / canvas.width,
+                    y: data.y / canvas.height
+                };
+                dataChannel.send(JSON.stringify(payload));
+            }
+        }
+
+        // --- VIEWER RECEIVE LOGIC ---
+        let remoteLast = { x: 0, y: 0 };
+
+        function handleIncomingDraw(event) {
+            const d = JSON.parse(event.data);
+            
+            // Convert relative coordinates back to screen pixels
+            const actualX = d.x * canvas.width;
+            const actualY = d.y * canvas.height;
+
+            if (d.t === 's') {
+                remoteLast = { x: actualX, y: actualY };
+            } else if (d.t === 'd') {
+                drawLine(remoteLast.x, remoteLast.y, actualX, actualY);
+                remoteLast = { x: actualX, y: actualY };
+            }
+        }
+
+    </script>
 </body>
 </html>
