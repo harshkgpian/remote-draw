@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>P2P Canvas (Wait for Connect)</title>
+    <title>P2P Canvas (Stable)</title>
     
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -12,95 +12,65 @@
         :root { --primary: #2c3e50; --accent: #e67e22; }
         body { margin: 0; overflow: hidden; font-family: sans-serif; background: #333; display: flex; height: 100vh; width: 100vw; }
 
-        /* --- LOGIN SCREEN (Full Screen Initially) --- */
+        /* LOGIN */
         #loginOverlay {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: #2c3e50; z-index: 999;
-            display: flex; justify-content: center; align-items: center; flex-direction: column;
-            color: white;
+            display: flex; justify-content: center; align-items: center; flex-direction: column; color: white;
         }
         .login-box { background: white; padding: 30px; border-radius: 12px; text-align: center; width: 300px; color: #333; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
-        .login-box input { width: 100%; padding: 12px; margin: 15px 0; box-sizing: border-box; border: 2px solid #ddd; border-radius: 6px; font-size: 16px; text-align: center;}
-        .btn { width: 100%; padding: 12px; margin: 5px 0; cursor: pointer; border: none; color: white; font-weight: bold; border-radius: 6px; font-size: 16px; transition: 0.2s; }
+        .login-box input { width: 100%; padding: 12px; margin: 15px 0; box-sizing: border-box; border: 2px solid #ddd; border-radius: 6px; text-align: center; font-size: 16px;}
+        .btn { width: 100%; padding: 12px; margin: 5px 0; cursor: pointer; border: none; color: white; font-weight: bold; border-radius: 6px; font-size: 16px; }
         .btn-host { background: #2980b9; } .btn-join { background: #27ae60; }
-        .btn:disabled { background: #95a5a6; cursor: not-allowed; }
-        
-        /* Status Animation */
         .status-spinner { margin-top: 20px; font-size: 14px; color: #bdc3c7; display: none; }
         .status-spinner.active { display: block; }
 
-        /* --- APP INTERFACE (Hidden Initially) --- */
-        #appContainer {
-            display: none; /* HIDDEN UNTIL CONNECTED */
-            width: 100%; height: 100%;
-        }
-
-        #sidebar {
-            width: 60px; background: #34495e; display: flex; flex-direction: column; align-items: center; padding-top: 10px;
-            box-shadow: 2px 0 5px rgba(0,0,0,0.3);
-        }
-        .tool-btn {
-            width: 40px; height: 40px; border-radius: 8px; border: none; background: transparent; color: #ecf0f1;
-            font-size: 18px; margin: 8px 0; cursor: pointer; transition: 0.2s;
-        }
+        /* APP */
+        #appContainer { display: none; width: 100%; height: 100%; }
+        #sidebar { width: 60px; background: #34495e; display: flex; flex-direction: column; align-items: center; padding-top: 10px; box-shadow: 2px 0 5px rgba(0,0,0,0.3); z-index: 10; }
+        .tool-btn { width: 40px; height: 40px; border-radius: 8px; border: none; background: transparent; color: #ecf0f1; font-size: 18px; margin: 8px 0; cursor: pointer; display: flex; justify-content: center; align-items: center; transition: 0.2s; }
         .tool-btn.active { background: var(--accent); color: white; transform: scale(1.1); }
-        
         .color-dot { width: 24px; height: 24px; border-radius: 50%; border: 2px solid #fff; margin: 6px 0; cursor: pointer; }
         
         #main { flex: 1; position: relative; background: #666; display: flex; justify-content: center; align-items: center; }
-        
-        #canvasWrapper {
-            position: relative; width: 100%; height: 100%; background: white; overflow: hidden;
-        }
+        #canvasWrapper { position: relative; width: 100%; height: 100%; background: white; overflow: hidden; }
         canvas { display: block; cursor: crosshair; touch-action: none; }
-
-        #pageControls {
-            position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
-            background: #2c3e50; padding: 8px 20px; border-radius: 30px; color: white; 
-            display: flex; align-items: center; gap: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.3);
-        }
+        #pageControls { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); background: #2c3e50; padding: 8px 20px; border-radius: 30px; color: white; display: flex; align-items: center; gap: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); z-index: 10; }
         .icon-btn { background: none; border: none; color: white; cursor: pointer; font-size: 16px; }
     </style>
 </head>
 <body>
 
-    <!-- 1. LOGIN / CONNECTION SCREEN -->
+    <!-- LOGIN -->
     <div id="loginOverlay">
         <div class="login-box">
-            <h2><i class="fas fa-palette"></i> ArtSync P2P</h2>
-            <p>Enter a unique Room Name to connect.</p>
-            <input type="text" id="roomId" placeholder="e.g. DesignRoom1">
-            
+            <h2><i class="fas fa-palette"></i> ArtSync</h2>
+            <p>Enter Room Name</p>
+            <input type="text" id="roomId" placeholder="e.g. MyRoom1">
             <div id="btnGroup">
                 <button class="btn btn-host" onclick="initApp('host')">Start as HOST</button>
                 <button class="btn btn-join" onclick="initApp('join')">Join as VIEWER</button>
             </div>
-
             <div class="status-spinner" id="statusArea">
                 <i class="fas fa-spinner fa-spin"></i> <span id="statusText">Connecting...</span>
             </div>
         </div>
     </div>
 
-    <!-- 2. MAIN APPLICATION (Hidden until connected) -->
+    <!-- CANVAS APP -->
     <div id="appContainer">
         <div id="sidebar">
             <button class="tool-btn active" id="t-pen" onclick="setTool('pen')"><i class="fas fa-pen"></i></button>
             <button class="tool-btn" id="t-eraser" onclick="setTool('eraser')"><i class="fas fa-eraser"></i></button>
-            
             <div style="height:1px; background:#555; width:80%; margin:10px 0;"></div>
-            
             <div class="color-dot" style="background:#000;" onclick="setColor('#000000')"></div>
             <div class="color-dot" style="background:#e74c3c;" onclick="setColor('#e74c3c')"></div>
             <div class="color-dot" style="background:#3498db;" onclick="setColor('#3498db')"></div>
             <div class="color-dot" style="background:#2ecc71;" onclick="setColor('#2ecc71')"></div>
-            
             <div style="height:1px; background:#555; width:80%; margin:auto;"></div>
-            
             <button class="tool-btn" onclick="downloadPDF()"><i class="fas fa-file-pdf"></i></button>
             <button class="tool-btn" onclick="toggleFS()"><i class="fas fa-expand"></i></button>
         </div>
-
         <div id="main">
             <div id="canvasWrapper">
                 <canvas id="cvs"></canvas>
@@ -120,106 +90,118 @@
         const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbznWr6pH1DLfDXVAKneaQiWKkf-yQFBwm26o9ecU-Z8grk2X7L_lzWrzxP-c02aWMZ1/exec'; 
         // ==========================================
 
-        // DOM
         const cvs = document.getElementById('cvs');
         const ctx = cvs.getContext('2d', { alpha: false });
         const statusText = document.getElementById('statusText');
         const statusArea = document.getElementById('statusArea');
         const btnGroup = document.getElementById('btnGroup');
 
-        // STATE
         const state = {
-            isHost: false,
-            roomId: '',
-            tool: 'pen',
-            color: '#000000',
-            lineWidth: 3,
-            drawing: false,
-            pages: [],
-            curPage: 0
+            isHost: false, roomId: '', tool: 'pen', color: '#000000', lineWidth: 3,
+            drawing: false, pages: [], curPage: 0
         };
-
         const remoteState = { tool: 'pen', color: '#000', lineWidth: 3 };
 
-        // WEBRTC
         const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
-        let dc; 
+        let dc;
+        let pollInterval; 
 
-        // --- CONNECTION LOGIC ---
-
+        // --- WEBRTC EVENTS ---
         pc.onconnectionstatechange = () => {
+            console.log("Connection State:", pc.connectionState);
             if(pc.connectionState === 'connected') {
-                // TRANSITION TO APP
+                // STOP POLLING ON CONNECT
+                clearInterval(pollInterval);
+                
                 document.getElementById('loginOverlay').style.display = 'none';
                 document.getElementById('appContainer').style.display = 'flex';
-                resize(); // Calculate canvas size now that it is visible
-                savePage(); // Init page 1
-            } else if (pc.connectionState === 'disconnected') {
-                alert("Connection Lost");
-                location.reload();
+                resize();
+                savePage();
+            } else if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed') {
+                alert("Connection Lost. Please refresh.");
             }
         };
 
+        // --- INIT ---
         async function initApp(role) {
             state.roomId = document.getElementById('roomId').value.trim();
             if(!state.roomId || SCRIPT_URL.includes("YOUR_GOOGLE")) return alert("Check Config");
 
-            // UI Updates
             btnGroup.style.display = 'none';
             statusArea.classList.add('active');
             state.isHost = (role === 'host');
 
             if(state.isHost) {
-                statusText.innerText = "Creating Room...";
+                statusText.innerText = "Creating Offer...";
                 dc = pc.createDataChannel("draw");
                 setupDC();
                 
                 const offer = await pc.createOffer();
                 await pc.setLocalDescription(offer);
                 
-                pc.onicecandidate = e => !e.candidate && sendSignal('offer', pc.localDescription);
+                pc.onicecandidate = e => {
+                    if(!e.candidate) sendSignal('offer', pc.localDescription);
+                };
                 
                 statusText.innerText = "Waiting for Viewer...";
-                poll('answer'); // Host waits for answer
+                poll('answer');
             } else {
-                statusText.innerText = "Looking for Room...";
-                document.getElementById('pageControls').style.display = 'none'; // Viewer has no controls
-                poll('offer'); // Viewer waits for offer
+                statusText.innerText = "Searching Room...";
+                document.getElementById('pageControls').style.display = 'none';
+                poll('offer');
             }
         }
 
         // --- SIGNALING ---
         async function sendSignal(type, data) {
-            await fetch(SCRIPT_URL, {
-                method: 'POST', mode: 'no-cors',
-                headers: {'Content-Type': 'text/plain'},
-                body: JSON.stringify({ id: state.roomId, type, sdp: JSON.stringify(data) })
-            });
+            try {
+                await fetch(SCRIPT_URL, {
+                    method: 'POST', mode: 'no-cors',
+                    headers: {'Content-Type': 'text/plain'},
+                    body: JSON.stringify({ id: state.roomId, type, sdp: JSON.stringify(data) })
+                });
+            } catch(e) { console.error(e); }
         }
 
         function poll(targetType) {
-            const pid = setInterval(async () => {
+            pollInterval = setInterval(async () => {
                 try {
+                    // STOP if already connected (Double Safety)
+                    if(pc.signalingState === "stable" && targetType === 'answer') {
+                        clearInterval(pollInterval);
+                        return;
+                    }
+
                     const res = await fetch(`${SCRIPT_URL}?id=${state.roomId}`);
                     const json = await res.json();
                     
+                    // HOST WAITING FOR ANSWER
                     if(targetType === 'answer' && json.answer) {
-                        clearInterval(pid);
-                        statusText.innerText = "Connecting P2P...";
-                        pc.setRemoteDescription(JSON.parse(json.answer));
+                        if(pc.signalingState === "have-local-offer") {
+                            clearInterval(pollInterval); // STOP POLLING
+                            statusText.innerText = "Connecting...";
+                            await pc.setRemoteDescription(JSON.parse(json.answer));
+                        }
                     } 
+                    // VIEWER WAITING FOR OFFER
                     else if(targetType === 'offer' && json.offer) {
-                        clearInterval(pid);
-                        statusText.innerText = "Joining...";
-                        
-                        pc.setRemoteDescription(JSON.parse(json.offer));
-                        pc.ondatachannel = e => { dc = e.channel; setupDC(); };
-                        
-                        const ans = await pc.createAnswer();
-                        await pc.setLocalDescription(ans);
-                        pc.onicecandidate = e => !e.candidate && sendSignal('answer', pc.localDescription);
+                        if(pc.signalingState === "stable") { // Only if we haven't set remote yet (viewer starts stable)
+                            clearInterval(pollInterval); // STOP POLLING
+                            statusText.innerText = "Joining...";
+                            
+                            await pc.setRemoteDescription(JSON.parse(json.offer));
+                            
+                            pc.ondatachannel = e => { dc = e.channel; setupDC(); };
+                            
+                            const ans = await pc.createAnswer();
+                            await pc.setLocalDescription(ans);
+                            
+                            pc.onicecandidate = e => {
+                                if(!e.candidate) sendSignal('answer', pc.localDescription);
+                            };
+                        }
                     }
-                } catch(e) { console.log("Polling..."); }
+                } catch(e) { console.log("Polling error", e); }
             }, 2000);
         }
 
@@ -231,20 +213,20 @@
             if(dc && dc.readyState === 'open') dc.send(JSON.stringify(data));
         }
 
-        // --- CANVAS LOGIC ---
+        // --- CANVAS ENGINE ---
         function resize() {
             const temp = cvs.toDataURL();
             cvs.width = cvs.parentElement.clientWidth;
             cvs.height = cvs.parentElement.clientHeight;
+            // White background for eraser
             ctx.fillStyle = "#ffffff";
-            ctx.fillRect(0,0,cvs.width, cvs.height); // White bg for eraser
+            ctx.fillRect(0,0,cvs.width, cvs.height);
             const img = new Image();
             img.onload = () => ctx.drawImage(img, 0, 0);
             img.src = temp;
         }
         window.onresize = resize;
 
-        // Helpers
         function getPos(e) {
             const r = cvs.getBoundingClientRect();
             const t = e.touches ? e.touches[0] : e;
@@ -253,17 +235,17 @@
 
         function configCtx(c, tool, color, width) {
             c.lineCap = 'round'; c.lineJoin = 'round';
+            c.globalCompositeOperation = 'source-over'; // Always paint on top
             if(tool === 'eraser') {
-                c.globalCompositeOperation = 'destination-out';
-                c.lineWidth = 20;
+                c.strokeStyle = '#ffffff'; // WHITE PAINT
+                c.lineWidth = 30;
             } else {
-                c.globalCompositeOperation = 'source-over';
                 c.strokeStyle = color;
                 c.lineWidth = width;
             }
         }
 
-        // Local Drawing
+        // --- LOCAL DRAW ---
         cvs.addEventListener('mousedown', start);
         cvs.addEventListener('touchstart', start, {passive:false});
         cvs.addEventListener('mousemove', move);
@@ -275,8 +257,6 @@
 
         function start(e) {
             if(!state.isHost && !dc) return; 
-            // if(!state.isHost) return; // Uncomment to lock viewer
-
             e.preventDefault();
             state.drawing = true;
             const p = getPos(e);
@@ -297,7 +277,6 @@
 
             if(points.length > 2) {
                 const last = points[points.length-2];
-                // Smooth quadratic curve
                 ctx.quadraticCurveTo(last.x, last.y, (last.x+p.x)/2, (last.y+p.y)/2);
                 ctx.stroke();
             } else {
@@ -316,7 +295,7 @@
             send({ t:'e' });
         }
 
-        // Remote Drawing
+        // --- REMOTE DRAW ---
         let rPoints = [];
         function handleMsg(d) {
             const w = cvs.width; const h = cvs.height;
@@ -347,7 +326,7 @@
             else if(d.t === 'cls') { ctx.fillStyle="#ffffff"; ctx.fillRect(0,0,w,h); savePage(); }
         }
 
-        // --- UI ACTIONS ---
+        // --- UI ---
         function setTool(t) {
             state.tool = t;
             document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
@@ -364,9 +343,8 @@
             }
         }
 
-        // --- PAGES / PDF ---
+        // --- HELPERS ---
         function savePage() { state.pages[state.curPage] = cvs.toDataURL(); }
-        
         function loadPage(i) {
             ctx.fillStyle="#ffffff"; ctx.fillRect(0,0,cvs.width, cvs.height);
             if(state.pages[i]) {
@@ -375,7 +353,6 @@
                 img.src = state.pages[i];
             }
         }
-
         function changePage(dir) {
             if(!state.isHost) return;
             savePage();
@@ -386,14 +363,12 @@
             document.getElementById('pgNum').innerText = "Page "+(next+1);
             send({t:'pg', i:next});
         }
-
         function downloadPDF() {
             savePage();
             const { jsPDF } = window.jspdf;
             const doc = new jsPDF({ orientation: 'landscape' });
             const w = doc.internal.pageSize.getWidth();
             const h = doc.internal.pageSize.getHeight();
-            
             state.pages.forEach((d, i) => {
                 if(i>0) doc.addPage();
                 if(d) doc.addImage(d, 'PNG', 0, 0, w, h);
