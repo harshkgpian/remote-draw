@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Smooth Sync Canvas</title>
+    <title>Sharp Sync Canvas</title>
     
     <!-- Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -12,7 +12,7 @@
         /* --- CSS STYLING --- */
         :root { --bg: #f0f2f5; --sidebar: #2c3e50; --accent: #007bff; --sidebar-width: 50px; }
         
-        body { margin: 0; overflow: hidden; font-family: 'Segoe UI', sans-serif; background: var(--bg); display: flex; height: 100vh; height: 100dvh; /* Dynamic Viewport Height */ }
+        body { margin: 0; overflow: hidden; font-family: 'Segoe UI', sans-serif; background: var(--bg); display: flex; height: 100vh; height: 100dvh; }
         
         /* --- LOGIN PANEL --- */
         #loginOverlay {
@@ -44,13 +44,13 @@
         /* --- MAIN APP --- */
         #appContainer { display: none; width: 100%; height: 100%; }
         
-        /* Sidebar - Slimmer & Safe Area Aware */
+        /* Sidebar */
         #sidebar {
             width: var(--sidebar-width); background: var(--sidebar); 
             display: flex; flex-direction: column; align-items: center; 
             padding-top: 15px; box-shadow: 4px 0 10px rgba(0,0,0,0.1); z-index: 10;
-            justify-content: space-between; /* Push bottom icons down */
-            padding-bottom: 20px; /* Base padding */
+            justify-content: space-between; 
+            padding-bottom: 20px; 
         }
 
         .tools-group {
@@ -73,11 +73,10 @@
         }
         .color-opt.active { border-color: white; transform: scale(1.1); }
 
-        /* Bottom group needs extra padding for mobile landscape address bars */
         .bottom-group {
-            margin-bottom: env(safe-area-inset-bottom, 20px); /* Safe area + 20px */
+            margin-bottom: env(safe-area-inset-bottom, 20px); 
             display: flex; flex-direction: column; align-items: center;
-            padding-bottom: 40px; /* Extra lift for landscape */
+            padding-bottom: 40px; 
         }
 
         /* Canvas Area */
@@ -87,7 +86,8 @@
             position: relative; background: white; box-shadow: 0 0 20px rgba(0,0,0,0.1);
             width: 100%; height: 100%; overflow: hidden;
         }
-        canvas { display: block; cursor: crosshair; touch-action: none; }
+        /* Ensure canvas doesn't introduce own scrollbars */
+        canvas { display: block; width: 100%; height: 100%; touch-action: none; }
     </style>
 </head>
 <body>
@@ -95,7 +95,7 @@
     <!-- LOGIN -->
     <div id="loginOverlay">
         <div class="login-card">
-            <h2><i class="fas fa-bezier-curve"></i> Smooth Sync</h2>
+            <h2><i class="fas fa-pencil-alt"></i> Sharp Sync</h2>
             <input type="text" id="roomId" placeholder="Enter Room ID">
             <button class="btn btn-host" id="btnHost" onclick="startHost()">Start as HOST</button>
             <button class="btn btn-viewer" id="btnViewer" onclick="startViewer()">Join as VIEWER</button>
@@ -106,7 +106,6 @@
     <!-- APP -->
     <div id="appContainer">
         <div id="sidebar">
-            <!-- Top Tools -->
             <div class="tools-group">
                 <button class="tool-btn active" id="t-pen" onclick="setTool('pen')"><i class="fas fa-pen"></i></button>
                 <button class="tool-btn" id="t-eraser" onclick="setTool('eraser')"><i class="fas fa-eraser"></i></button>
@@ -119,7 +118,6 @@
                 <div class="color-opt" style="background: #007bff;" onclick="setColor('#007bff', this)"></div>
             </div>
 
-            <!-- Bottom Actions (Shifted Up) -->
             <div class="bottom-group">
                 <button class="tool-btn" onclick="clearCanvas()"><i class="fas fa-trash"></i></button>
                 <button class="tool-btn" onclick="toggleFullScreen()"><i class="fas fa-expand"></i></button>
@@ -145,12 +143,11 @@
         // State
         let currentTool = 'pen';
         let currentColor = '#000000';
-        let currentLineWidth = 3;
+        let currentLineWidth = 4; // Slightly thicker for visibility
         
         // Drawing State
-        const DAMPING_FACTOR = 0.85; // Controls smoothness (Higher = smoother but more lag)
         let isDrawing = false;
-        let lastPoint = { x: 0, y: 0 };
+        let points = []; // Array to store points for smoothing
 
         // DOM
         const statusEl = document.getElementById('status');
@@ -160,17 +157,37 @@
         const ctx = canvas.getContext('2d', { alpha: false });
         const roomIdInput = document.getElementById('roomId');
 
-        // --- INIT ---
+        // --- HIGH DPI CANVAS SETUP (Fixes Pixelation) ---
         function resizeCanvas() {
             const wrapper = document.getElementById('canvasWrapper');
-            const temp = canvas.toDataURL();
-            canvas.width = wrapper.clientWidth;
-            canvas.height = wrapper.clientHeight;
+            const rect = wrapper.getBoundingClientRect();
+            
+            // Save current image data to restore after resize
+            let savedData = null;
+            if (canvas.width > 0) {
+                savedData = canvas.toDataURL();
+            }
+
+            // Get Device Pixel Ratio (DPR) - typically 2 or 3 on phones
+            const dpr = window.devicePixelRatio || 1;
+
+            // Set actual size in memory (scaled to account for extra pixel density)
+            canvas.width = rect.width * dpr;
+            canvas.height = rect.height * dpr;
+
+            // Normalize coordinate system to use css pixels
+            ctx.scale(dpr, dpr);
+
+            // Set white background
             ctx.fillStyle = '#ffffff';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-            const img = new Image();
-            img.onload = () => ctx.drawImage(img, 0, 0);
-            img.src = temp;
+            ctx.fillRect(0, 0, rect.width, rect.height);
+
+            // Restore image
+            if (savedData) {
+                const img = new Image();
+                img.onload = () => ctx.drawImage(img, 0, 0, rect.width, rect.height);
+                img.src = savedData;
+            }
         }
         window.addEventListener('resize', resizeCanvas);
 
@@ -246,44 +263,43 @@
             }, 2000);
         }
 
-        // --- SMOOTH DRAWING LOGIC ---
+        // --- SHARP & SMOOTH DRAWING LOGIC ---
 
-        function getTransformedCoordinates(e) {
+        function getPos(e) {
+            // e.clientX/Y are already in CSS pixels, which is what we want 
+            // because we used ctx.scale() to handle the high DPI
             const rect = canvas.getBoundingClientRect();
             const clientX = e.touches ? e.touches[0].clientX : e.clientX;
             const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-            // Scale isn't strictly necessary if canvas matches display size 1:1, 
-            // but good for robustness:
-            const scaleX = canvas.width / rect.width;
-            const scaleY = canvas.height / rect.height;
             return {
-                x: (clientX - rect.left) * scaleX,
-                y: (clientY - rect.top) * scaleY
+                x: clientX - rect.left,
+                y: clientY - rect.top
             };
-        }
-
-        // Interpolation for smoother lines (Damping)
-        function lerp(start, end, factor) {
-            return start + (end - start) * factor;
         }
 
         function setupDrawingEvents() {
             const start = (e) => {
                 e.preventDefault();
                 isDrawing = true;
-                lastPoint = getTransformedCoordinates(e);
+                const p = getPos(e);
+                points = [p]; // Start new array of points
                 
                 // Send Start config
                 sendData({
-                    t: 's', x: lastPoint.x, y: lastPoint.y,
+                    t: 's', x: p.x, y: p.y,
                     c: (currentTool === 'eraser' ? '#ffffff' : currentColor),
-                    w: (currentTool === 'eraser' ? 20 : currentLineWidth)
+                    w: (currentTool === 'eraser' ? 30 : currentLineWidth)
                 });
 
                 ctx.beginPath();
-                ctx.moveTo(lastPoint.x, lastPoint.y);
+                ctx.moveTo(p.x, p.y);
+                // Just draw a dot initially
+                ctx.lineTo(p.x, p.y); 
+                ctx.stroke();
+                
+                // Set context for this stroke
                 ctx.strokeStyle = (currentTool === 'eraser' ? '#ffffff' : currentColor);
-                ctx.lineWidth = (currentTool === 'eraser' ? 20 : currentLineWidth);
+                ctx.lineWidth = (currentTool === 'eraser' ? 30 : currentLineWidth);
                 ctx.lineCap = 'round';
                 ctx.lineJoin = 'round';
             };
@@ -292,30 +308,34 @@
                 e.preventDefault();
                 if (!isDrawing) return;
 
-                const rawPoint = getTransformedCoordinates(e);
-                
-                // --- SMOOTHING ALGORITHM ---
-                // Instead of jumping directly to rawPoint, we move partway there.
-                // This removes jagged edges from fast mouse movements.
-                const smoothX = lerp(lastPoint.x, rawPoint.x, 1 - DAMPING_FACTOR);
-                const smoothY = lerp(lastPoint.y, rawPoint.y, 1 - DAMPING_FACTOR);
-                
-                const newPoint = { x: smoothX, y: smoothY };
+                const p = getPos(e);
+                points.push(p);
 
-                // Quadratic Curve for rendering smoothness
-                // Draw curve from lastPoint to midpoint of (last -> new)
-                // Actually, simpler for P2P: Draw line to smoothed point.
-                // Since points are generated frequently via smoothing, lines look like curves.
-                ctx.lineTo(newPoint.x, newPoint.y);
-                ctx.stroke();
+                // --- MIDPOINT ALGORITHM ---
+                // This draws quadratic curves between the midpoints of input coordinates.
+                // It is the industry standard for smooth lines without lag.
+                if (points.length > 2) {
+                    const last = points[points.length - 2];
+                    const prev = points[points.length - 3];
+                    
+                    // Calculate midpoints
+                    const midX = (last.x + p.x) / 2;
+                    const midY = (last.y + p.y) / 2;
 
-                sendData({t: 'd', x: newPoint.x, y: newPoint.y});
-                
-                // Update last point to where we just drew
-                lastPoint = newPoint; 
+                    // Draw curve from last anchor to new midpoint
+                    // Using the 'last' point as the Control Point
+                    ctx.quadraticCurveTo(last.x, last.y, midX, midY);
+                    ctx.stroke();
+                    
+                    // We only send the raw point, the remote side will calculate the same curve
+                    sendData({t: 'd', x: p.x, y: p.y});
+                }
             };
 
-            const end = () => { isDrawing = false; };
+            const end = () => { 
+                isDrawing = false; 
+                points = [];
+            };
 
             canvas.addEventListener('mousedown', start);
             canvas.addEventListener('mousemove', move);
@@ -327,35 +347,52 @@
 
         function sendData(obj) {
             if (dataChannel && dataChannel.readyState === 'open') {
-                // Normalize coords to 0-1 for sending to avoid screen size conflicts
+                // Normalize to 0-1 for network sending
+                const rect = canvas.getBoundingClientRect(); // Get CSS Size
                 const payload = { ...obj };
-                if(payload.x) payload.x = payload.x / canvas.width;
-                if(payload.y) payload.y = payload.y / canvas.height;
+                
+                if(payload.x) payload.x = payload.x / rect.width;
+                if(payload.y) payload.y = payload.y / rect.height;
+                
                 dataChannel.send(JSON.stringify(payload));
             }
         }
 
         // --- REMOTE HANDLER ---
+        // Remote side must mimic the smoothing logic
+        let rPoints = [];
+
         function handleIncomingDraw(e) {
             const d = JSON.parse(e.data);
-            const w = canvas.width;
-            const h = canvas.height;
+            // Get CSS dimensions
+            const rect = canvas.getBoundingClientRect();
+            const w = rect.width;
+            const h = rect.height;
 
             if(d.t === 's') {
+                rPoints = [{x: d.x * w, y: d.y * h}];
                 ctx.beginPath();
-                ctx.moveTo(d.x * w, d.y * h);
+                ctx.moveTo(rPoints[0].x, rPoints[0].y);
                 ctx.strokeStyle = d.c;
                 ctx.lineWidth = d.w;
                 ctx.lineCap = 'round';
                 ctx.lineJoin = 'round';
             } 
             else if(d.t === 'd') {
-                ctx.lineTo(d.x * w, d.y * h);
-                ctx.stroke();
+                const p = {x: d.x * w, y: d.y * h};
+                rPoints.push(p);
+
+                if (rPoints.length > 2) {
+                    const last = rPoints[rPoints.length - 2];
+                    const midX = (last.x + p.x) / 2;
+                    const midY = (last.y + p.y) / 2;
+                    ctx.quadraticCurveTo(last.x, last.y, midX, midY);
+                    ctx.stroke();
+                }
             }
             else if(d.t === 'cls') {
                 ctx.fillStyle = '#ffffff';
-                ctx.fillRect(0, 0, w, h);
+                ctx.fillRect(0, 0, rect.width, rect.height);
             }
         }
 
@@ -375,8 +412,9 @@
 
         function clearCanvas() {
             if(confirm("Clear?")) {
+                const rect = canvas.getBoundingClientRect();
                 ctx.fillStyle = '#ffffff';
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.fillRect(0, 0, rect.width, rect.height);
                 sendData({t: 'cls'});
             }
         }
