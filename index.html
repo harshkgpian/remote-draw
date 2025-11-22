@@ -3,14 +3,22 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Vector Sync Canvas</title>
+    <title>Vector Sync (No Tracking Errors)</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
     <style>
         /* --- CSS STYLING --- */
         :root { --bg: #f0f2f5; --sidebar: #2c3e50; --accent: #007bff; --sidebar-width: 60px; }
         
-        body { margin: 0; overflow: hidden; font-family: 'Segoe UI', sans-serif; background: var(--bg); display: flex; height: 100vh; height: 100dvh; touch-action: none; }
+        body { 
+            margin: 0; overflow: hidden; 
+            font-family: 'Segoe UI', sans-serif; 
+            background: var(--bg); 
+            display: flex; 
+            height: 100vh; height: 100dvh; 
+            width: 100vw;
+            touch-action: none; 
+        }
         
         /* --- LOGIN PANEL --- */
         #loginOverlay {
@@ -38,40 +46,61 @@
         /* --- MAIN APP --- */
         #appContainer { display: none; width: 100%; height: 100%; }
         
-        /* Sidebar */
+        /* --- SIDEBAR --- */
         #sidebar {
-            width: var(--sidebar-width); background: var(--sidebar); 
+            width: var(--sidebar-width); 
+            min-width: var(--sidebar-width);
+            background: var(--sidebar); 
             display: flex; flex-direction: column; align-items: center; 
-            padding-top: 15px; box-shadow: 4px 0 10px rgba(0,0,0,0.1); z-index: 10;
+            padding-top: 10px; padding-bottom: 10px;
+            box-shadow: 4px 0 10px rgba(0,0,0,0.1); z-index: 10;
+            height: 100%;
+            overflow-y: auto; 
+            scrollbar-width: none;
+        }
+        #sidebar::-webkit-scrollbar { display: none; }
+
+        .sidebar-content {
+            display: flex; flex-direction: column; align-items: center; width: 100%;
+            padding-bottom: 20px; 
         }
 
         .tool-btn {
             width: 40px; height: 40px; border: none; background: transparent; color: #aab7c4;
-            font-size: 18px; margin: 6px 0; cursor: pointer; border-radius: 8px; transition: 0.2s;
-            display: flex; justify-content: center; align-items: center;
+            font-size: 18px; margin: 5px 0; cursor: pointer; border-radius: 8px; transition: 0.2s;
+            display: flex; justify-content: center; align-items: center; flex-shrink: 0;
         }
         .tool-btn.active { background: var(--accent); color: white; }
         
         .color-opt {
-            width: 24px; height: 24px; border-radius: 50%; margin: 8px 0; cursor: pointer;
-            border: 2px solid transparent; transition: 0.2s;
+            width: 24px; height: 24px; border-radius: 50%; margin: 6px 0; cursor: pointer;
+            border: 2px solid transparent; transition: 0.2s; flex-shrink: 0;
         }
         .color-opt.active { border-color: white; transform: scale(1.1); }
 
-        /* Slider for Stroke Size */
         .size-slider-container {
-            display: flex; flex-direction: column; align-items: center; margin: 10px 0;
+            display: flex; flex-direction: column; align-items: center; margin: 5px 0;
             color: #aab7c4; font-size: 10px;
         }
         input[type=range] {
-            writing-mode: bt-lr; /* IE */
-            -webkit-appearance: slider-vertical; /* Webkit */
-            width: 8px; height: 80px; padding: 0 5px;
-            margin-top: 5px; cursor: ns-resize;
+            writing-mode: bt-lr; -webkit-appearance: slider-vertical;
+            width: 8px; height: 80px; padding: 0 5px; margin-top: 5px; cursor: ns-resize;
+        }
+
+        .divider { width: 50%; height: 1px; background: #44566c; margin: 8px 0; flex-shrink: 0; }
+
+        /* Mobile Landscape Optimization */
+        @media (max-height: 500px) {
+            .tool-btn { width: 35px; height: 35px; margin: 2px 0; font-size: 16px; }
+            .color-opt { margin: 4px 0; }
+            input[type=range] { height: 50px; }
+            .slider-icon { display: none; }
+            .divider { margin: 4px 0; }
+            #sidebar { padding-top: 5px; }
         }
 
         /* Canvas Area */
-        #mainArea { flex: 1; position: relative; background: #ddd; display: flex; justify-content: center; align-items: center; }
+        #mainArea { flex: 1; position: relative; background: #ddd; display: flex; justify-content: center; align-items: center; overflow: hidden; }
         #canvasWrapper {
             position: relative; background: white; box-shadow: 0 0 20px rgba(0,0,0,0.1);
             width: 100%; height: 100%; overflow: hidden;
@@ -81,19 +110,13 @@
         /* Page Controls */
         #pageControls {
             position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
-            background: var(--sidebar); padding: 8px 20px; border-radius: 30px; color: white;
+            background: var(--sidebar); padding: 8px 15px; border-radius: 30px; color: white;
             display: flex; align-items: center; gap: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.2);
             font-size: 14px; font-weight: bold; pointer-events: auto;
-            transition: opacity 0.3s ease, transform 0.3s ease; /* Smooth fade */
-            z-index: 20;
+            transition: opacity 0.3s ease, transform 0.3s ease; 
+            z-index: 20; white-space: nowrap;
         }
-        
-        /* Class to hide controls */
-        #pageControls.fade-out {
-            opacity: 0;
-            transform: translateX(-50%) translateY(20px);
-            pointer-events: none;
-        }
+        #pageControls.fade-out { opacity: 0; transform: translateX(-50%) translateY(20px); pointer-events: none; }
 
         .pg-btn { background: none; border: none; color: white; cursor: pointer; font-size: 16px; display: flex; align-items: center; }
         .pg-btn:disabled { opacity: 0.5; cursor: default; }
@@ -117,21 +140,19 @@
     <!-- APP -->
     <div id="appContainer">
         <div id="sidebar">
-            <div style="display:flex; flex-direction:column; align-items:center;">
+            <div class="sidebar-content">
                 <button class="tool-btn active" id="t-pen" onclick="setTool('pen')"><i class="fas fa-pen"></i></button>
                 <button class="tool-btn" id="t-eraser" onclick="setTool('eraser')"><i class="fas fa-eraser"></i></button>
                 
-                <div style="width:50%; height:1px; background:#44566c; margin:10px 0;"></div>
+                <div class="divider"></div>
                 
-                <!-- Size Slider (Reversed Icons) -->
                 <div class="size-slider-container">
-                    <i class="fas fa-circle" style="font-size: 16px; margin-bottom: 5px;"></i> <!-- Big Top -->
-                    <!-- Max at top means standard slider orientation in most browsers -->
+                    <i class="fas fa-circle slider-icon" style="font-size: 16px; margin-bottom: 5px;"></i>
                     <input type="range" min="1" max="25" value="3" id="sizeSlider" oninput="updateSize(this.value)">
-                    <i class="fas fa-circle" style="font-size: 6px; margin-top: 5px;"></i> <!-- Small Bottom -->
+                    <i class="fas fa-circle slider-icon" style="font-size: 6px; margin-top: 5px;"></i>
                 </div>
 
-                <div style="width:50%; height:1px; background:#44566c; margin:10px 0;"></div>
+                <div class="divider"></div>
                 
                 <div class="color-opt active" style="background: #000;" onclick="setColor('#000000', this)"></div>
                 <div class="color-opt" style="background: #dc3545;" onclick="setColor('#dc3545', this)"></div>
@@ -145,7 +166,6 @@
                 <canvas id="drawCanvas"></canvas>
             </div>
             
-            <!-- Page UI (With Fullscreen) -->
             <div id="pageControls">
                 <button class="pg-btn" onclick="changePage(-1)"><i class="fas fa-chevron-left"></i></button>
                 <span id="pageDisplay">Page 1</span>
@@ -153,6 +173,7 @@
                 
                 <div class="sep"></div>
                 
+                <button class="pg-btn" onclick="initPDFDownload()" title="Save PDF"><i class="fas fa-file-pdf"></i></button>
                 <button class="pg-btn" onclick="deletePage()" title="Clear Page"><i class="fas fa-trash-alt"></i></button>
                 <button class="pg-btn" onclick="toggleFullScreen()" title="Fullscreen"><i class="fas fa-expand"></i></button>
             </div>
@@ -163,7 +184,6 @@
         // --- CONFIG ---
         const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbznWr6pH1DLfDXVAKneaQiWKkf-yQFBwm26o9ecU-Z8grk2X7L_lzWrzxP-c02aWMZ1/exec';
         const config = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
-        
         const pc = new RTCPeerConnection(config);
         let dataChannel = null;
         let intervalId = null;
@@ -174,7 +194,7 @@
         let currentColor = '#000000';
         let currentSize = 3;
 
-        // --- DATA STRUCTURE ---
+        // --- DATA ---
         let pages = [ [] ]; 
         let currentPageIndex = 0;
 
@@ -188,54 +208,43 @@
         const pageDisplay = document.getElementById('pageDisplay');
         const pageControls = document.getElementById('pageControls');
 
-        // --- HIGH DPI CANVAS ---
+        // --- CANVAS SETUP ---
         function resizeCanvas() {
             const wrapper = document.getElementById('canvasWrapper');
             const rect = wrapper.getBoundingClientRect();
             const dpr = window.devicePixelRatio || 1;
-            
             canvas.width = rect.width * dpr;
             canvas.height = rect.height * dpr;
-            
             ctx.resetTransform(); 
             ctx.scale(dpr, dpr);
-
-            redrawCanvas();
+            renderPage(currentPageIndex);
         }
         window.addEventListener('resize', resizeCanvas);
 
-        // --- THE REDRAW ENGINE ---
-        function redrawCanvas() {
+        // --- RENDER ENGINE ---
+        function renderPage(pageIdx) {
             const rect = canvas.getBoundingClientRect();
-            
             ctx.fillStyle = '#ffffff';
             ctx.fillRect(0, 0, rect.width, rect.height);
 
-            const strokes = pages[currentPageIndex] || [];
+            const strokes = pages[pageIdx] || [];
 
             strokes.forEach(stroke => {
                 if (stroke.isErased) return;
-
                 ctx.beginPath();
-                
                 const startX = stroke.points[0].x * rect.width;
                 const startY = stroke.points[0].y * rect.height;
-
                 ctx.moveTo(startX, startY);
-                
                 if (stroke.points.length > 1) {
                     for (let i = 1; i < stroke.points.length; i++) {
                         const curr = stroke.points[i];
                         const prev = stroke.points[i-1];
-                        
                         const currX = curr.x * rect.width;
                         const currY = curr.y * rect.height;
                         const prevX = prev.x * rect.width;
                         const prevY = prev.y * rect.height;
-
-                        if(i === 1) {
-                            ctx.lineTo(currX, currY);
-                        } else {
+                        if(i === 1) ctx.lineTo(currX, currY);
+                        else {
                             const midX = (prevX + currX) / 2;
                             const midY = (prevY + currY) / 2;
                             ctx.quadraticCurveTo(prevX, prevY, midX, midY);
@@ -246,7 +255,6 @@
                 } else {
                     ctx.lineTo(startX, startY);
                 }
-
                 ctx.strokeStyle = stroke.color;
                 ctx.lineWidth = stroke.size;
                 ctx.lineCap = 'round';
@@ -255,7 +263,7 @@
             });
         }
 
-        // --- INTERACTION LOGIC ---
+        // --- INTERACTION ---
         let isDrawing = false;
         let activeStroke = null;
 
@@ -271,24 +279,18 @@
             };
         }
 
-        // --- AUTO HIDE UI ---
         function checkUICollision(y) {
             const rect = canvas.getBoundingClientRect();
-            // If drawing in bottom 15% of screen
-            if (y > rect.height * 0.85) {
-                pageControls.classList.add('fade-out');
-            } else {
-                pageControls.classList.remove('fade-out');
-            }
+            if (y > rect.height * 0.85) pageControls.classList.add('fade-out');
+            else pageControls.classList.remove('fade-out');
         }
 
         function start(e) {
             e.preventDefault();
             const p = getPos(e);
             isDrawing = true;
-            checkUICollision(p.y); // Check visibility
+            checkUICollision(p.y);
 
-            // CONTINUOUS ERASER START
             if (currentTool === 'eraser') {
                 checkForEraserHit(p);
                 return;
@@ -301,81 +303,65 @@
                 size: currentSize,
                 isErased: false
             };
-            
             if(!pages[currentPageIndex]) pages[currentPageIndex] = [];
             pages[currentPageIndex].push(activeStroke);
 
             sendData({ t: 's', id: activeStroke.id, x: p.nx, y: p.ny, c: currentColor, w: currentSize });
-            redrawCanvas();
+            renderPage(currentPageIndex);
         }
 
         function move(e) {
             e.preventDefault();
             if (!isDrawing) return;
-            
             const p = getPos(e);
-            checkUICollision(p.y); // Check visibility
+            checkUICollision(p.y);
 
-            // CONTINUOUS ERASER MOVE
             if (currentTool === 'eraser') {
                 checkForEraserHit(p);
                 return;
             }
-
             if (!activeStroke) return;
 
             activeStroke.points.push({x: p.nx, y: p.ny});
             sendData({ t: 'd', id: activeStroke.id, x: p.nx, y: p.ny });
-            redrawCanvas();
+            renderPage(currentPageIndex);
         }
 
         function end() {
             isDrawing = false;
             activeStroke = null;
-            // Show controls again when input stops
             pageControls.classList.remove('fade-out');
         }
 
-        // --- ERASER LOGIC (Hit Detection) ---
+        // --- ERASER ---
         function checkForEraserHit(pos) {
             const strokes = pages[currentPageIndex] || [];
             const rect = canvas.getBoundingClientRect();
-            const threshold = 20; // Eraser radius
+            const threshold = 20;
 
-            // Loop backwards
             for (let i = strokes.length - 1; i >= 0; i--) {
                 const s = strokes[i];
                 if (s.isErased) continue;
-
-                // Check distance to points
-                // Optimization: Check bounding box first could be faster, 
-                // but for <1000 strokes, raw point check is fine.
                 for (let pt of s.points) {
                     const px = pt.x * rect.width;
                     const py = pt.y * rect.height;
-                    
-                    // Fast distance check
                     if (Math.abs(px - pos.x) < threshold && Math.abs(py - pos.y) < threshold) {
-                        // HIT! Erase it.
                         s.isErased = true;
                         sendData({ t: 'del', id: s.id });
-                        redrawCanvas();
-                        return; // Erase one stroke per frame per touch
+                        renderPage(currentPageIndex);
+                        return;
                     }
                 }
             }
         }
 
-        // --- NETWORK HANDLER ---
+        // --- NETWORK MSG ---
         function handleIncomingMsg(e) {
             const d = JSON.parse(e.data);
             if(!pages[currentPageIndex]) pages[currentPageIndex] = [];
 
             if (d.t === 's') {
-                const newStroke = {
-                    id: d.id, points: [{x: d.x, y: d.y}],
-                    color: d.c, size: d.w, isErased: false
-                };
+                const newStroke = { id: d.id, points: [{x: d.x, y: d.y}], color: d.c, size: d.w, isErased: false };
                 pages[currentPageIndex].push(newStroke);
             } 
             else if (d.t === 'd') {
@@ -391,11 +377,43 @@
                 if (!pages[currentPageIndex]) pages[currentPageIndex] = [];
                 updatePageUI();
             }
-            else if (d.t === 'clr') {
-                pages[currentPageIndex] = [];
-            }
+            else if (d.t === 'clr') pages[currentPageIndex] = [];
 
-            redrawCanvas();
+            renderPage(currentPageIndex);
+        }
+
+        // --- DYNAMIC PDF LOADER (Fixes Tracking Error) ---
+        async function initPDFDownload() {
+            if(window.jspdf) {
+                downloadPDF();
+            } else {
+                // Dynamically load the script only when button is clicked
+                // This bypasses many tracking protection filters that check initial page load
+                const script = document.createElement('script');
+                script.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
+                // Adding anonymous crossorigin helps avoid cookie tracking checks
+                script.crossOrigin = "anonymous"; 
+                script.referrerPolicy = "no-referrer";
+                
+                script.onload = () => { downloadPDF(); };
+                script.onerror = () => { alert("Browser blocked the PDF library. Please disable 'Tracking Prevention' for this site to export."); };
+                document.body.appendChild(script);
+            }
+        }
+
+        async function downloadPDF() {
+            const { jsPDF } = window.jspdf;
+            const orientation = (canvas.width > canvas.height) ? 'landscape' : 'portrait';
+            const pdf = new jsPDF({ orientation: orientation, unit: 'px', format: [canvas.width, canvas.height] });
+
+            for(let i=0; i<pages.length; i++) {
+                if(i > 0) pdf.addPage();
+                renderPage(i);
+                const imgData = canvas.toDataURL("image/png");
+                pdf.addImage(imgData, 'PNG', 0, 0, canvas.width, canvas.height);
+            }
+            renderPage(currentPageIndex);
+            pdf.save("MyNotes.pdf");
         }
 
         // --- WEBRTC ---
@@ -403,18 +421,15 @@
             statusEl.textContent = "Syncing...";
             try {
                 await fetch(SCRIPT_URL, {
-                    method: 'POST', mode: 'no-cors', 
-                    headers: { 'Content-Type': 'text/plain' }, 
+                    method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain' }, 
                     body: JSON.stringify({ id: roomIdInput.value.trim(), type: type, sdp: JSON.stringify(sdp) })
                 });
             } catch(e) {}
         }
-
         async function readFromSheet() {
             const response = await fetch(`${SCRIPT_URL}?id=${roomIdInput.value.trim()}`);
             return await response.json();
         }
-
         pc.onconnectionstatechange = () => {
             if (pc.connectionState === "connected") {
                 clearInterval(intervalId);
@@ -424,7 +439,6 @@
                 resizeCanvas();
             }
         };
-
         async function startHost() {
             if(!roomIdInput.value) return alert("Enter ID");
             isHost = true;
@@ -448,7 +462,6 @@
                 }
             };
         }
-
         async function startViewer() {
             if(!roomIdInput.value) return alert("Enter ID");
             isHost = false;
@@ -469,7 +482,6 @@
                 }
             }, 2000);
         }
-
         function setupEvents() {
             canvas.addEventListener('mousedown', start);
             canvas.addEventListener('mousemove', move);
@@ -478,12 +490,7 @@
             canvas.addEventListener('touchmove', move, {passive: false});
             canvas.addEventListener('touchend', end);
         }
-
-        function sendData(obj) {
-            if (dataChannel && dataChannel.readyState === 'open') dataChannel.send(JSON.stringify(obj));
-        }
-
-        // --- UI HELPERS ---
+        function sendData(obj) { if (dataChannel && dataChannel.readyState === 'open') dataChannel.send(JSON.stringify(obj)); }
         function setTool(t) { currentTool = t; updateBtnState(); }
         function setColor(c, el) { 
             currentTool = 'pen'; currentColor = c; 
@@ -496,8 +503,6 @@
             document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
             document.getElementById('t-'+currentTool).classList.add('active');
         }
-
-        // --- PAGES ---
         function changePage(dir) {
             if (!isHost) return alert("Only Host can change pages");
             const next = currentPageIndex + dir;
@@ -506,22 +511,17 @@
             if (!pages[currentPageIndex]) pages[currentPageIndex] = [];
             updatePageUI();
             sendData({ t: 'pg', i: currentPageIndex });
-            redrawCanvas();
+            renderPage(currentPageIndex);
         }
-
         function deletePage() {
             if (!isHost) return;
             if (confirm("Clear this page?")) {
                 pages[currentPageIndex] = [];
                 sendData({ t: 'clr' });
-                redrawCanvas();
+                renderPage(currentPageIndex);
             }
         }
-
-        function updatePageUI() {
-            pageDisplay.innerText = "Page " + (currentPageIndex + 1);
-        }
-
+        function updatePageUI() { pageDisplay.innerText = "Page " + (currentPageIndex + 1); }
         function toggleFullScreen() {
             if (!document.fullscreenElement) document.documentElement.requestFullscreen();
             else if (document.exitFullscreen) document.exitFullscreen();
