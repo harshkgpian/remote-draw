@@ -2,96 +2,208 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sheet Sync Canvas</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Pro Sync Canvas</title>
+    
+    <!-- Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
     <style>
-        body { font-family: sans-serif; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; background: #f0f2f5; }
+        /* --- CSS STYLING --- */
+        :root { --bg: #f0f2f5; --sidebar: #2c3e50; --accent: #007bff; }
         
-        .container { background: white; padding: 25px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); max-width: 400px; width: 100%; text-align: center; }
+        body { margin: 0; overflow: hidden; font-family: 'Segoe UI', sans-serif; background: var(--bg); display: flex; height: 100vh; }
         
-        input { width: 90%; padding: 10px; margin: 10px 0; border: 1px solid #ccc; border-radius: 5px; font-size: 16px; }
+        /* Login Panel (Centered Overlay) */
+        #loginOverlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(240, 242, 245, 0.95); z-index: 999;
+            display: flex; justify-content: center; align-items: center;
+        }
+        .login-card {
+            background: white; padding: 40px; border-radius: 15px; 
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1); text-align: center; width: 90%; max-width: 400px;
+        }
+        .login-card h2 { margin-top: 0; color: #333; }
+        .login-card input {
+            width: 100%; padding: 12px; margin: 15px 0; border: 2px solid #eee; 
+            border-radius: 8px; font-size: 16px; box-sizing: border-box; text-align: center; transition: 0.3s;
+        }
+        .login-card input:focus { border-color: var(--accent); outline: none; }
         
-        button { width: 100%; padding: 12px; margin: 5px 0; background: #007bff; color: white; border: none; border-radius: 5px; font-size: 16px; cursor: pointer; }
-        button#btnViewer { background: #28a745; }
-        button:disabled { background: #ccc; }
+        .btn {
+            width: 100%; padding: 12px; margin: 8px 0; border: none; border-radius: 8px; 
+            font-size: 16px; font-weight: 600; cursor: pointer; transition: 0.2s; color: white;
+        }
+        .btn-host { background: var(--accent); }
+        .btn-viewer { background: #28a745; }
+        .btn:hover { opacity: 0.9; transform: translateY(-1px); }
+        .btn:disabled { background: #ccc; cursor: not-allowed; transform: none; }
+
+        #status { margin-top: 15px; font-weight: bold; color: #666; font-size: 14px; }
+
+        /* Main App Structure */
+        #appContainer { display: none; width: 100%; height: 100%; }
         
-        #status { margin-top: 15px; font-size: 14px; color: #666; font-weight: bold; min-height: 20px; }
+        /* Sidebar */
+        #sidebar {
+            width: 70px; background: var(--sidebar); display: flex; flex-direction: column; 
+            align-items: center; padding-top: 20px; box-shadow: 4px 0 10px rgba(0,0,0,0.1);
+            z-index: 10;
+        }
         
-        canvas { background: white; box-shadow: 0 4px 6px rgba(0,0,0,0.1); border: 2px solid #333; margin-top: 20px; cursor: crosshair; display: none; }
+        .tool-btn {
+            width: 45px; height: 45px; border: none; background: transparent; color: #aab7c4;
+            font-size: 20px; margin: 10px 0; cursor: pointer; border-radius: 10px; transition: 0.2s;
+            display: flex; justify-content: center; align-items: center;
+        }
+        .tool-btn:hover { background: rgba(255,255,255,0.1); color: white; }
+        .tool-btn.active { background: var(--accent); color: white; box-shadow: 0 4px 10px rgba(0,123,255,0.4); }
+        
+        .divider { width: 60%; height: 1px; background: #44566c; margin: 10px 0; }
+        
+        .color-opt {
+            width: 28px; height: 28px; border-radius: 50%; margin: 8px 0; cursor: pointer;
+            border: 2px solid transparent; transition: 0.2s;
+        }
+        .color-opt:hover { transform: scale(1.2); }
+        .color-opt.active { border-color: white; }
+
+        /* Canvas Area */
+        #mainArea { flex: 1; position: relative; background: #ddd; display: flex; justify-content: center; align-items: center; }
+        
+        #canvasWrapper {
+            position: relative; background: white; box-shadow: 0 0 20px rgba(0,0,0,0.2);
+            width: 100%; height: 100%; overflow: hidden;
+        }
+        
+        canvas { display: block; cursor: crosshair; touch-action: none; }
     </style>
 </head>
 <body>
 
-    <div class="container" id="loginPanel">
-        <h2>Shared Canvas</h2>
-        <p>Enter a Room ID (e.g., "Room1") to connect.</p>
-        
-        <input type="text" id="roomId" placeholder="Enter Room Name/ID">
-        
-        <button id="btnHost" onclick="startHost()">Start as HOST (Draw)</button>
-        <button id="btnViewer" onclick="startViewer()">Join as VIEWER (Watch)</button>
-        
-        <div id="status">Ready.</div>
+    <!-- LOGIN SCREEN -->
+    <div id="loginOverlay">
+        <div class="login-card">
+            <h2><i class="fas fa-paint-brush"></i> Sync Canvas</h2>
+            <p style="color:#666; font-size: 14px;">Enter a Room ID to start</p>
+            
+            <input type="text" id="roomId" placeholder="e.g. Room1">
+            
+            <button class="btn btn-host" id="btnHost" onclick="startHost()">Start as HOST (Draw)</button>
+            <button class="btn btn-viewer" id="btnViewer" onclick="startViewer()">Join as VIEWER</button>
+            
+            <div id="status">Ready to connect.</div>
+        </div>
     </div>
 
-    <canvas id="drawCanvas"></canvas>
+    <!-- MAIN APP (Hidden initially) -->
+    <div id="appContainer">
+        <!-- SIDEBAR -->
+        <div id="sidebar">
+            <button class="tool-btn active" id="t-pen" onclick="setTool('pen')" title="Pen"><i class="fas fa-pen"></i></button>
+            <button class="tool-btn" id="t-eraser" onclick="setTool('eraser')" title="Eraser"><i class="fas fa-eraser"></i></button>
+            
+            <div class="divider"></div>
+            
+            <div class="color-opt active" id="c-black" style="background: #000;" onclick="setColor('#000000', this)"></div>
+            <div class="color-opt" style="background: #dc3545;" onclick="setColor('#dc3545', this)"></div>
+            <div class="color-opt" style="background: #28a745;" onclick="setColor('#28a745', this)"></div>
+            <div class="color-opt" style="background: #007bff;" onclick="setColor('#007bff', this)"></div>
+            
+            <div class="divider"></div>
+            
+            <button class="tool-btn" onclick="clearCanvas()" title="Clear Page"><i class="fas fa-trash"></i></button>
+            <button class="tool-btn" onclick="toggleFullScreen()" title="Fullscreen"><i class="fas fa-expand"></i></button>
+        </div>
+
+        <!-- CANVAS -->
+        <div id="mainArea">
+            <div id="canvasWrapper">
+                <canvas id="drawCanvas"></canvas>
+            </div>
+        </div>
+    </div>
 
     <script>
-        // !!! PASTE YOUR GOOGLE SCRIPT URL HERE !!!
+        // --- CONFIGURATION ---
         const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbznWr6pH1DLfDXVAKneaQiWKkf-yQFBwm26o9ecU-Z8grk2X7L_lzWrzxP-c02aWMZ1/exec';
-
         const config = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
+        
         const pc = new RTCPeerConnection(config);
         let dataChannel = null;
         let intervalId = null;
 
-        // DOM
+        // --- STATE ---
+        let currentTool = 'pen'; // 'pen' or 'eraser'
+        let currentColor = '#000000';
+        let currentLineWidth = 3;
+
+        // --- DOM ELEMENTS ---
         const statusEl = document.getElementById('status');
-        const loginPanel = document.getElementById('loginPanel');
+        const loginOverlay = document.getElementById('loginOverlay');
+        const appContainer = document.getElementById('appContainer');
         const canvas = document.getElementById('drawCanvas');
         const ctx = canvas.getContext('2d');
         const roomIdInput = document.getElementById('roomId');
 
-        // Resize canvas
-        canvas.width = window.innerWidth;
-        canvas.height = window.innerHeight;
-
-        // --- GOOGLE SHEET API HELPERS ---
-
-        // Send data (POST) - Used for sending Offer/Answer
-        async function sendToSheet(type, sdp) {
-            statusEl.textContent = "Saving to cloud...";
-            const id = roomIdInput.value.trim();
+        // --- INIT CANVAS SIZE ---
+        function resizeCanvas() {
+            const wrapper = document.getElementById('canvasWrapper');
+            // Save current drawing
+            const temp = canvas.toDataURL();
             
-            // Note: We use no-cors for GAS POST requests usually, but here we treat it as text/plain 
-            // to avoid preflight issues. GAS handles text/plain body easily.
-            await fetch(SCRIPT_URL, {
-                method: 'POST',
-                mode: 'no-cors', 
-                headers: { 'Content-Type': 'text/plain' }, 
-                body: JSON.stringify({ id: id, type: type, sdp: JSON.stringify(sdp) })
-            });
+            canvas.width = wrapper.clientWidth;
+            canvas.height = wrapper.clientHeight;
+            
+            // Fill white background (crucial for eraser)
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Restore
+            const img = new Image();
+            img.onload = () => ctx.drawImage(img, 0, 0);
+            img.src = temp;
+        }
+        window.addEventListener('resize', resizeCanvas);
+
+        // --- WEBRTC CONNECTION LOGIC (Untouched Logic) ---
+
+        async function sendToSheet(type, sdp) {
+            statusEl.textContent = "Syncing with cloud...";
+            const id = roomIdInput.value.trim();
+            try {
+                await fetch(SCRIPT_URL, {
+                    method: 'POST', mode: 'no-cors', 
+                    headers: { 'Content-Type': 'text/plain' }, 
+                    body: JSON.stringify({ id: id, type: type, sdp: JSON.stringify(sdp) })
+                });
+            } catch(e) { console.error(e); statusEl.textContent = "Network Error"; }
         }
 
-        // Read data (GET) - Used for Polling
         async function readFromSheet() {
             const id = roomIdInput.value.trim();
             const response = await fetch(`${SCRIPT_URL}?id=${id}`);
             return await response.json();
         }
 
-        // --- WEBRTC LOGIC ---
-
         pc.onconnectionstatechange = () => {
             if (pc.connectionState === "connected") {
-                clearInterval(intervalId); // Stop checking the sheet
+                clearInterval(intervalId);
                 statusEl.textContent = "Connected!";
-                loginPanel.style.display = 'none';
-                canvas.style.display = 'block';
+                
+                // SWITCH UI
+                loginOverlay.style.display = 'none';
+                appContainer.style.display = 'flex';
+                
+                // Init Canvas
+                resizeCanvas();
+            } else if (pc.connectionState === "disconnected") {
+                alert("Connection lost");
             }
         };
 
-        // --- HOST FLOW ---
+        // HOST
         async function startHost() {
             if(!roomIdInput.value) return alert("Enter a Room ID");
             
@@ -99,54 +211,49 @@
             document.getElementById('btnViewer').disabled = true;
 
             dataChannel = pc.createDataChannel("draw");
-            setupDrawingEvents(); // Host can draw
+            setupDrawingEvents(); // Enable Host Drawing
 
             const offer = await pc.createOffer();
             await pc.setLocalDescription(offer);
 
-            // Wait for ICE candidates to complete gathering
             pc.onicecandidate = async (e) => {
                 if (e.candidate === null) {
-                    // 1. Send Offer to Sheet
                     await sendToSheet('offer', pc.localDescription);
-                    statusEl.textContent = "Offer sent! Waiting for Viewer...";
+                    statusEl.textContent = "Room Created. Waiting for Viewer...";
 
-                    // 2. Start polling for Answer
                     intervalId = setInterval(async () => {
                         const data = await readFromSheet();
                         if (data.answer && data.answer !== "") {
-                            statusEl.textContent = "Answer found! Connecting...";
+                            clearInterval(intervalId); // Stop polling immediately once answer found
+                            statusEl.textContent = "Viewer found! Connecting...";
                             const answerDesc = JSON.parse(data.answer);
                             if(!pc.currentRemoteDescription) {
                                 await pc.setRemoteDescription(answerDesc);
                             }
                         }
-                    }, 2000); // Check every 2 seconds
+                    }, 2000);
                 }
             };
         }
 
-        // --- VIEWER FLOW ---
+        // VIEWER
         async function startViewer() {
             if(!roomIdInput.value) return alert("Enter a Room ID");
             
             document.getElementById('btnHost').disabled = true;
             document.getElementById('btnViewer').disabled = true;
-            statusEl.textContent = "Looking for Host...";
+            statusEl.textContent = "Searching for Room...";
 
-            // 1. Poll until we find an Offer
             intervalId = setInterval(async () => {
                 const data = await readFromSheet();
                 
-                // If we found an offer and haven't set it yet
                 if (data.offer && data.offer !== "" && pc.signalingState === "stable") {
-                    clearInterval(intervalId); // Stop polling for offer
-                    statusEl.textContent = "Host found! Joining...";
+                    clearInterval(intervalId);
+                    statusEl.textContent = "Room found! Joining...";
                     
                     const offerDesc = JSON.parse(data.offer);
                     await pc.setRemoteDescription(offerDesc);
                     
-                    // Prepare to receive drawing data
                     pc.ondatachannel = (e) => {
                         const dc = e.channel;
                         dc.onmessage = handleIncomingDraw;
@@ -155,30 +262,27 @@
                     const answer = await pc.createAnswer();
                     await pc.setLocalDescription(answer);
                     
-                    // Wait for ICE completion
                     pc.onicecandidate = async (ev) => {
                         if (ev.candidate === null) {
-                             // 2. Send Answer back to Sheet
                             await sendToSheet('answer', pc.localDescription);
-                            statusEl.textContent = "joined! Finishing connection...";
+                            statusEl.textContent = "Joining... Please wait.";
                         }
                     };
                 }
             }, 2000);
         }
 
-        // --- DRAWING LOGIC ---
+        // --- DRAWING LOGIC (Enhanced) ---
         let drawing = false;
         let last = { x: 0, y: 0 };
 
         function setupDrawingEvents() {
-            // Mouse & Touch support
             const getPos = (e) => {
                 const rect = canvas.getBoundingClientRect();
                 const clientX = e.touches ? e.touches[0].clientX : e.clientX;
                 const clientY = e.touches ? e.touches[0].clientY : e.clientY;
                 return { 
-                    x: (clientX - rect.left) / canvas.width, // Normalize 0-1
+                    x: (clientX - rect.left) / canvas.width, 
                     y: (clientY - rect.top) / canvas.height 
                 };
             };
@@ -187,15 +291,35 @@
                 e.preventDefault();
                 drawing = true;
                 last = getPos(e);
-                sendData({t:'s', x:last.x, y:last.y});
+                // Send Start packet with Color and Width info
+                sendData({
+                    t: 's', 
+                    x: last.x, 
+                    y: last.y,
+                    c: (currentTool === 'eraser' ? '#ffffff' : currentColor),
+                    w: (currentTool === 'eraser' ? 20 : currentLineWidth)
+                });
+                
+                // Start local path
+                ctx.beginPath();
+                ctx.moveTo(last.x * canvas.width, last.y * canvas.height);
+                // Apply local style
+                ctx.strokeStyle = (currentTool === 'eraser' ? '#ffffff' : currentColor);
+                ctx.lineWidth = (currentTool === 'eraser' ? 20 : currentLineWidth);
+                ctx.lineCap = 'round';
             };
 
             const move = (e) => {
                 e.preventDefault();
                 if (!drawing) return;
                 const pos = getPos(e);
-                draw(last.x, last.y, pos.x, pos.y);
-                sendData({t:'d', x:pos.x, y:pos.y});
+                
+                // Draw Local
+                ctx.lineTo(pos.x * canvas.width, pos.y * canvas.height);
+                ctx.stroke();
+                
+                // Send Draw packet
+                sendData({t: 'd', x: pos.x, y: pos.y});
                 last = pos;
             };
 
@@ -209,35 +333,71 @@
             canvas.addEventListener('touchend', end);
         }
 
-        function draw(x1, y1, x2, y2) {
-            // Convert normalized coords back to pixels
-            const w = canvas.width;
-            const h = canvas.height;
-            ctx.lineWidth = 3;
-            ctx.lineCap = 'round';
-            ctx.strokeStyle = '#000';
-            ctx.beginPath();
-            ctx.moveTo(x1 * w, y1 * h);
-            ctx.lineTo(x2 * w, y2 * h);
-            ctx.stroke();
-        }
-
         function sendData(obj) {
             if (dataChannel && dataChannel.readyState === 'open') {
                 dataChannel.send(JSON.stringify(obj));
             }
         }
 
-        // Remote Drawing
-        let rLast = {x:0, y:0};
+        // --- REMOTE DRAWING HANDLER ---
         function handleIncomingDraw(e) {
             const d = JSON.parse(e.data);
-            if(d.t === 's') rLast = {x:d.x, y:d.y};
+            const w = canvas.width;
+            const h = canvas.height;
+
+            if(d.t === 's') {
+                // Start a new line with received properties
+                ctx.beginPath();
+                ctx.moveTo(d.x * w, d.y * h);
+                ctx.strokeStyle = d.c;
+                ctx.lineWidth = d.w;
+                ctx.lineCap = 'round';
+            } 
             else if(d.t === 'd') {
-                draw(rLast.x, rLast.y, d.x, d.y);
-                rLast = {x:d.x, y:d.y};
+                // Continue line
+                ctx.lineTo(d.x * w, d.y * h);
+                ctx.stroke();
+            }
+            else if(d.t === 'cls') {
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(0, 0, w, h);
             }
         }
+
+        // --- UI ACTIONS ---
+        function setTool(tool) {
+            currentTool = tool;
+            // Update buttons
+            document.getElementById('t-pen').classList.remove('active');
+            document.getElementById('t-eraser').classList.remove('active');
+            document.getElementById('t-'+tool).classList.add('active');
+        }
+
+        function setColor(color, element) {
+            setTool('pen'); // Auto switch to pen
+            currentColor = color;
+            // Update UI
+            document.querySelectorAll('.color-opt').forEach(el => el.classList.remove('active'));
+            if(element) element.classList.add('active');
+        }
+
+        function clearCanvas() {
+            if(confirm("Clear the entire canvas?")) {
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                sendData({t: 'cls'});
+            }
+        }
+
+        function toggleFullScreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else if (document.exitFullscreen) {
+                document.exitFullscreen();
+            }
+            // Canvas resize handled by window.onresize listener
+        }
+
     </script>
 </body>
 </html>
