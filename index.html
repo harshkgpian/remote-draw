@@ -43,7 +43,6 @@
             width: var(--sidebar-width); background: var(--sidebar); 
             display: flex; flex-direction: column; align-items: center; 
             padding-top: 15px; box-shadow: 4px 0 10px rgba(0,0,0,0.1); z-index: 10;
-            justify-content: space-between; padding-bottom: 20px; 
         }
 
         .tool-btn {
@@ -67,8 +66,8 @@
         input[type=range] {
             writing-mode: bt-lr; /* IE */
             -webkit-appearance: slider-vertical; /* Webkit */
-            width: 8px; height: 60px; padding: 0 5px;
-            margin-top: 5px;
+            width: 8px; height: 80px; padding: 0 5px;
+            margin-top: 5px; cursor: ns-resize;
         }
 
         /* Canvas Area */
@@ -82,12 +81,23 @@
         /* Page Controls */
         #pageControls {
             position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
-            background: var(--sidebar); padding: 8px 15px; border-radius: 30px; color: white;
-            display: flex; align-items: center; gap: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+            background: var(--sidebar); padding: 8px 20px; border-radius: 30px; color: white;
+            display: flex; align-items: center; gap: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.2);
             font-size: 14px; font-weight: bold; pointer-events: auto;
+            transition: opacity 0.3s ease, transform 0.3s ease; /* Smooth fade */
+            z-index: 20;
         }
-        .pg-btn { background: none; border: none; color: white; cursor: pointer; font-size: 16px; }
+        
+        /* Class to hide controls */
+        #pageControls.fade-out {
+            opacity: 0;
+            transform: translateX(-50%) translateY(20px);
+            pointer-events: none;
+        }
+
+        .pg-btn { background: none; border: none; color: white; cursor: pointer; font-size: 16px; display: flex; align-items: center; }
         .pg-btn:disabled { opacity: 0.5; cursor: default; }
+        .sep { width: 1px; height: 15px; background: #555; margin: 0 5px; }
 
     </style>
 </head>
@@ -113,11 +123,12 @@
                 
                 <div style="width:50%; height:1px; background:#44566c; margin:10px 0;"></div>
                 
-                <!-- Size Slider -->
+                <!-- Size Slider (Reversed Icons) -->
                 <div class="size-slider-container">
-                    <i class="fas fa-circle" style="font-size: 8px;"></i>
-                    <input type="range" min="1" max="20" value="3" id="sizeSlider" oninput="updateSize(this.value)">
-                    <i class="fas fa-circle" style="font-size: 14px; margin-top:5px;"></i>
+                    <i class="fas fa-circle" style="font-size: 16px; margin-bottom: 5px;"></i> <!-- Big Top -->
+                    <!-- Max at top means standard slider orientation in most browsers -->
+                    <input type="range" min="1" max="25" value="3" id="sizeSlider" oninput="updateSize(this.value)">
+                    <i class="fas fa-circle" style="font-size: 6px; margin-top: 5px;"></i> <!-- Small Bottom -->
                 </div>
 
                 <div style="width:50%; height:1px; background:#44566c; margin:10px 0;"></div>
@@ -127,10 +138,6 @@
                 <div class="color-opt" style="background: #28a745;" onclick="setColor('#28a745', this)"></div>
                 <div class="color-opt" style="background: #007bff;" onclick="setColor('#007bff', this)"></div>
             </div>
-
-            <div style="margin-bottom: 20px; display: flex; flex-direction: column;">
-                <button class="tool-btn" onclick="toggleFullScreen()"><i class="fas fa-expand"></i></button>
-            </div>
         </div>
 
         <div id="mainArea">
@@ -138,12 +145,16 @@
                 <canvas id="drawCanvas"></canvas>
             </div>
             
-            <!-- Page UI -->
+            <!-- Page UI (With Fullscreen) -->
             <div id="pageControls">
                 <button class="pg-btn" onclick="changePage(-1)"><i class="fas fa-chevron-left"></i></button>
                 <span id="pageDisplay">Page 1</span>
                 <button class="pg-btn" onclick="changePage(1)"><i class="fas fa-chevron-right"></i></button>
-                <button class="pg-btn" style="margin-left:10px" onclick="deletePage()" title="Clear Page"><i class="fas fa-trash-alt"></i></button>
+                
+                <div class="sep"></div>
+                
+                <button class="pg-btn" onclick="deletePage()" title="Clear Page"><i class="fas fa-trash-alt"></i></button>
+                <button class="pg-btn" onclick="toggleFullScreen()" title="Fullscreen"><i class="fas fa-expand"></i></button>
             </div>
         </div>
     </div>
@@ -163,8 +174,7 @@
         let currentColor = '#000000';
         let currentSize = 3;
 
-        // --- DATA STRUCTURE (The Magic Part) ---
-        // pages = [  [stroke1, stroke2], [stroke1]  ]
+        // --- DATA STRUCTURE ---
         let pages = [ [] ]; 
         let currentPageIndex = 0;
 
@@ -173,9 +183,10 @@
         const loginOverlay = document.getElementById('loginOverlay');
         const appContainer = document.getElementById('appContainer');
         const canvas = document.getElementById('drawCanvas');
-        const ctx = canvas.getContext('2d', { alpha: false }); // false = faster
+        const ctx = canvas.getContext('2d', { alpha: false }); 
         const roomIdInput = document.getElementById('roomId');
         const pageDisplay = document.getElementById('pageDisplay');
+        const pageControls = document.getElementById('pageControls');
 
         // --- HIGH DPI CANVAS ---
         function resizeCanvas() {
@@ -186,68 +197,53 @@
             canvas.width = rect.width * dpr;
             canvas.height = rect.height * dpr;
             
-            // Important: Reset context scale
             ctx.resetTransform(); 
             ctx.scale(dpr, dpr);
 
-            redrawCanvas(); // Redraw all strokes for current page
+            redrawCanvas();
         }
         window.addEventListener('resize', resizeCanvas);
 
         // --- THE REDRAW ENGINE ---
         function redrawCanvas() {
-            const rect = canvas.getBoundingClientRect(); // CSS size
+            const rect = canvas.getBoundingClientRect();
             
-            // 1. Clear Screen
             ctx.fillStyle = '#ffffff';
             ctx.fillRect(0, 0, rect.width, rect.height);
 
-            // 2. Get strokes for current page
             const strokes = pages[currentPageIndex] || [];
 
-            // 3. Draw every stroke
             strokes.forEach(stroke => {
-                if (stroke.isErased) return; // Skip deleted strokes
+                if (stroke.isErased) return;
 
                 ctx.beginPath();
                 
-                // Convert normalized (0-1) coords back to screen pixels
-                const p0 = stroke.points[0];
-                const startX = p0.x * rect.width;
-                const startY = p0.y * rect.height;
+                const startX = stroke.points[0].x * rect.width;
+                const startY = stroke.points[0].y * rect.height;
 
                 ctx.moveTo(startX, startY);
                 
-                // Only draw if multiple points
                 if (stroke.points.length > 1) {
                     for (let i = 1; i < stroke.points.length; i++) {
-                        // Midpoint Smoothing Logic applied to historic data
                         const curr = stroke.points[i];
                         const prev = stroke.points[i-1];
                         
-                        // Re-calculate pixel positions
                         const currX = curr.x * rect.width;
                         const currY = curr.y * rect.height;
                         const prevX = prev.x * rect.width;
                         const prevY = prev.y * rect.height;
 
                         if(i === 1) {
-                            ctx.lineTo(currX, currY); // First point connect
+                            ctx.lineTo(currX, currY);
                         } else {
                             const midX = (prevX + currX) / 2;
                             const midY = (prevY + currY) / 2;
-                            const ppX = stroke.points[i-2].x * rect.width; // previous-previous
-                            const ppY = stroke.points[i-2].y * rect.height;
-                            
-                            // Standard quadratic curve logic
                             ctx.quadraticCurveTo(prevX, prevY, midX, midY);
                         }
                     }
-                    // Connect final point
                     const last = stroke.points[stroke.points.length-1];
                     ctx.lineTo(last.x * rect.width, last.y * rect.height);
                 } else {
-                    // Single dot
                     ctx.lineTo(startX, startY);
                 }
 
@@ -261,7 +257,7 @@
 
         // --- INTERACTION LOGIC ---
         let isDrawing = false;
-        let activeStroke = null; // The stroke currently being drawn
+        let activeStroke = null;
 
         function getPos(e) {
             const rect = canvas.getBoundingClientRect();
@@ -270,135 +266,139 @@
             return {
                 x: clientX - rect.left,
                 y: clientY - rect.top,
-                // Store normalized immediately for data consistency
                 nx: (clientX - rect.left) / rect.width,
                 ny: (clientY - rect.top) / rect.height
             };
         }
 
+        // --- AUTO HIDE UI ---
+        function checkUICollision(y) {
+            const rect = canvas.getBoundingClientRect();
+            // If drawing in bottom 15% of screen
+            if (y > rect.height * 0.85) {
+                pageControls.classList.add('fade-out');
+            } else {
+                pageControls.classList.remove('fade-out');
+            }
+        }
+
         function start(e) {
             e.preventDefault();
             const p = getPos(e);
+            isDrawing = true;
+            checkUICollision(p.y); // Check visibility
 
+            // CONTINUOUS ERASER START
             if (currentTool === 'eraser') {
-                handleEraserClick(p);
+                checkForEraserHit(p);
                 return;
             }
 
-            isDrawing = true;
-            
-            // Create new stroke object
             activeStroke = {
-                id: Date.now() + Math.random().toString(), // Unique ID
+                id: Date.now() + Math.random().toString(),
                 points: [{x: p.nx, y: p.ny}],
                 color: currentColor,
                 size: currentSize,
                 isErased: false
             };
             
-            // Add to current page
             if(!pages[currentPageIndex]) pages[currentPageIndex] = [];
             pages[currentPageIndex].push(activeStroke);
 
-            // Network: Send Start
             sendData({ t: 's', id: activeStroke.id, x: p.nx, y: p.ny, c: currentColor, w: currentSize });
-
-            redrawCanvas(); // Render new state
+            redrawCanvas();
         }
 
         function move(e) {
             e.preventDefault();
-            if (!isDrawing || !activeStroke) return;
-
-            const p = getPos(e);
+            if (!isDrawing) return;
             
-            // Add point to data
+            const p = getPos(e);
+            checkUICollision(p.y); // Check visibility
+
+            // CONTINUOUS ERASER MOVE
+            if (currentTool === 'eraser') {
+                checkForEraserHit(p);
+                return;
+            }
+
+            if (!activeStroke) return;
+
             activeStroke.points.push({x: p.nx, y: p.ny});
-
-            // Network: Send Point
             sendData({ t: 'd', id: activeStroke.id, x: p.nx, y: p.ny });
-
-            redrawCanvas(); // Re-render scene
+            redrawCanvas();
         }
 
         function end() {
             isDrawing = false;
             activeStroke = null;
+            // Show controls again when input stops
+            pageControls.classList.remove('fade-out');
         }
 
-        // --- OBJECT ERASER LOGIC ---
-        function handleEraserClick(pos) {
+        // --- ERASER LOGIC (Hit Detection) ---
+        function checkForEraserHit(pos) {
             const strokes = pages[currentPageIndex] || [];
             const rect = canvas.getBoundingClientRect();
-            const threshold = 15; // Pixel distance tolerance
+            const threshold = 20; // Eraser radius
 
-            // Loop backwards (erase top items first)
+            // Loop backwards
             for (let i = strokes.length - 1; i >= 0; i--) {
                 const s = strokes[i];
                 if (s.isErased) continue;
 
-                // Check every point in the stroke
+                // Check distance to points
+                // Optimization: Check bounding box first could be faster, 
+                // but for <1000 strokes, raw point check is fine.
                 for (let pt of s.points) {
                     const px = pt.x * rect.width;
                     const py = pt.y * rect.height;
                     
-                    const dist = Math.hypot(px - pos.x, py - pos.y);
-                    
-                    if (dist < threshold) {
-                        // HIT! Erase whole stroke
+                    // Fast distance check
+                    if (Math.abs(px - pos.x) < threshold && Math.abs(py - pos.y) < threshold) {
+                        // HIT! Erase it.
                         s.isErased = true;
-                        sendData({ t: 'del', id: s.id }); // Tell peer to delete
+                        sendData({ t: 'del', id: s.id });
                         redrawCanvas();
-                        return; // Only erase one at a time
+                        return; // Erase one stroke per frame per touch
                     }
                 }
             }
         }
 
         // --- NETWORK HANDLER ---
-        // We must build the same data structure on the Viewer side
         function handleIncomingMsg(e) {
             const d = JSON.parse(e.data);
-            
-            // Ensure page array exists
             if(!pages[currentPageIndex]) pages[currentPageIndex] = [];
 
             if (d.t === 's') {
-                // Remote started new stroke
                 const newStroke = {
-                    id: d.id,
-                    points: [{x: d.x, y: d.y}],
-                    color: d.c,
-                    size: d.w,
-                    isErased: false
+                    id: d.id, points: [{x: d.x, y: d.y}],
+                    color: d.c, size: d.w, isErased: false
                 };
                 pages[currentPageIndex].push(newStroke);
             } 
             else if (d.t === 'd') {
-                // Find the stroke and append point
                 const s = pages[currentPageIndex].find(st => st.id === d.id);
                 if (s) s.points.push({x: d.x, y: d.y});
             } 
             else if (d.t === 'del') {
-                // Mark stroke as erased
                 const s = pages[currentPageIndex].find(st => st.id === d.id);
                 if (s) s.isErased = true;
             }
             else if (d.t === 'pg') {
-                // Change Page
                 currentPageIndex = d.i;
                 if (!pages[currentPageIndex]) pages[currentPageIndex] = [];
                 updatePageUI();
             }
             else if (d.t === 'clr') {
-                // Clear current page
                 pages[currentPageIndex] = [];
             }
 
             redrawCanvas();
         }
 
-        // --- WEBRTC CONNECTION (Same as before) ---
+        // --- WEBRTC ---
         async function sendToSheet(type, sdp) {
             statusEl.textContent = "Syncing...";
             try {
@@ -497,18 +497,13 @@
             document.getElementById('t-'+currentTool).classList.add('active');
         }
 
-        // --- PAGES LOGIC ---
+        // --- PAGES ---
         function changePage(dir) {
-            // Only host can change pages to keep sync simple
             if (!isHost) return alert("Only Host can change pages");
-            
             const next = currentPageIndex + dir;
             if (next < 0) return;
-
             currentPageIndex = next;
-            // Init array if new page
             if (!pages[currentPageIndex]) pages[currentPageIndex] = [];
-            
             updatePageUI();
             sendData({ t: 'pg', i: currentPageIndex });
             redrawCanvas();
